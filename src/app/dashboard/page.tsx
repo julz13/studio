@@ -90,14 +90,14 @@ export default function Dashboard() {
 
   // Effect to create a new record if one doesn't exist for the selected date
   useEffect(() => {
-    if (userLoading || recordLoading || !user) {
+    if (userLoading || !user) {
       return; 
     }
 
     const initializeRecord = async () => {
+      // We must check if the recordData is null (which means it's loaded and doesn't exist)
+      // before attempting to create a new one. The useDoc hook will handle updates if the record exists.
       if (recordData === null) {
-        // Data has loaded and it's confirmed null (doesn't exist).
-        // Create a new record for the day.
         const yesterday = subDays(date, 1);
         const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
         const yesterdayRef = doc(
@@ -113,7 +113,6 @@ export default function Dashboard() {
           const yesterdaySnap = await getDoc(yesterdayRef);
           if (yesterdaySnap.exists()) {
             const yesterdayData = yesterdaySnap.data() as DailyRecord;
-            // Crucial fix: recalculate yesterday's data before using its closing balance
             const calculatedYesterday = recalculateTotals(yesterdayData);
             if (calculatedYesterday) {
                  opening = calculatedYesterday.balances.closing;
@@ -137,7 +136,6 @@ export default function Dashboard() {
         };
         
         const newRecordRef = doc(firestore, 'users', user.uid, 'records', formattedDate);
-        // This setDoc will trigger the useDoc hook to update with the new data
         setDoc(newRecordRef, newRecord).catch((serverError) => {
           const permissionError = new FirestorePermissionError({
             path: newRecordRef.path,
@@ -147,13 +145,16 @@ export default function Dashboard() {
           errorEmitter.emit('permission-error', permissionError);
         });
       } else if (recordData) {
-         setYesterdayBalance(null); // Record already exists, no need to show yesterday's balance
+         setYesterdayBalance(null); 
       }
     };
 
-    initializeRecord();
+    // We only want to run initialization logic after the record has been confirmed to exist or not.
+    if (!recordLoading) {
+      initializeRecord();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordData, recordLoading, userLoading, user, date, firestore, formattedDate]);
+  }, [userLoading, user, date, firestore, formattedDate, recordLoading]);
 
 
   // Effect to update editing fields when record loads

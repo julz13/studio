@@ -84,14 +84,12 @@ export default function PaymentsPage() {
 
   // Effect to set initial record or create a new one
   useEffect(() => {
-    if (userLoading || recordLoading || !user) {
-      return; 
+    if (userLoading || !user) {
+      return;
     }
 
     const initializeRecord = async () => {
       if (recordData === null) {
-        // Data has loaded and it's confirmed null (doesn't exist).
-        // Create a new record for the day.
         const yesterday = subDays(date, 1);
         const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
         const yesterdayRef = doc(
@@ -107,7 +105,6 @@ export default function PaymentsPage() {
           const yesterdaySnap = await getDoc(yesterdayRef);
           if (yesterdaySnap.exists()) {
             const yesterdayData = yesterdaySnap.data() as DailyRecord;
-            // Crucial fix: recalculate yesterday's data before using its closing balance
             const calculatedYesterday = recalculateTotals(yesterdayData);
              if (calculatedYesterday) {
                  opening = calculatedYesterday.balances.closing;
@@ -133,7 +130,6 @@ export default function PaymentsPage() {
           'records',
           formattedDate
         );
-        // Save the newly created record for today
         setDoc(newRecordRef, newRecord).catch((serverError) => {
           const permissionError = new FirestorePermissionError({
             path: newRecordRef.path,
@@ -145,9 +141,11 @@ export default function PaymentsPage() {
       }
     };
 
-    initializeRecord();
+    if (!recordLoading) {
+      initializeRecord();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordData, recordLoading, userLoading, user, date, firestore, formattedDate]);
+  }, [userLoading, user, date, firestore, formattedDate, recordLoading]);
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',

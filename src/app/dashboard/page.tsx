@@ -24,8 +24,10 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { ExpensesChart } from '@/components/expenses-chart';
 import { mockDailyRecord } from '@/lib/data';
-
-const getLocalStorageKey = (date: string) => `finance-record-${date}`;
+import { useUser } from '@/firebase/auth/use-user';
+import { useDoc } from '@/firebase/firestore/use-doc';
+import { useFirestore } from '@/firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   const cashSpent = updatedRecord.payments
@@ -62,77 +64,39 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   };
 };
 
-const loadRecordFromLocalStorage = (date: string): DailyRecord => {
-    if (typeof window === 'undefined') {
-      return { ...mockDailyRecord, date, payments: [] };
-    }
-    const key = getLocalStorageKey(date);
-    const storedData = localStorage.getItem(key);
-    if (storedData) {
-      try {
-        const parsed = JSON.parse(storedData);
-        // Ensure closing balances are calculated if not present
-        if (!parsed.balances.closing) {
-          return recalculateTotals(parsed);
-        }
-        return parsed;
-      } catch (e) {
-        console.error("Failed to parse localStorage data", e);
-      }
-    }
-    // If no record for the date, or parsing failed, create a new one
-    const newRecord = { ...mockDailyRecord, date, payments: [] };
-    // Check if yesterday's data exists to carry over closing balance
-    const yesterday = format(subDays(new Date(date), 1), 'yyyy-MM-dd');
-    const yesterdayKey = getLocalStorageKey(yesterday);
-    const yesterdayData = localStorage.getItem(yesterdayKey);
-    if (yesterdayData) {
-      try {
-        const yesterdayRecord = JSON.parse(yesterdayData);
-        // Ensure yesterday's totals are correct before carrying over
-        const calculatedYesterday = recalculateTotals(yesterdayRecord);
-        newRecord.balances.opening.account = calculatedYesterday.balances.closing.account;
-        newRecord.balances.opening.cash = calculatedYesterday.balances.closing.cash;
-      } catch(e) {
-          console.error("Failed to parse yesterday's data", e);
-      }
-    }
-    const calculatedRecord = recalculateTotals(newRecord);
-    localStorage.setItem(key, JSON.stringify(calculatedRecord));
-    return calculatedRecord;
-};
-
-const saveRecordToLocalStorage = (record: DailyRecord) => {
-    if (typeof window === 'undefined') return;
-    const key = getLocalStorageKey(record.date);
-    localStorage.setItem(key, JSON.stringify(record));
-};
-
 export default function Dashboard() {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const formattedDate = useMemo(() => date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'), [date]);
-  
-  const [record, setRecord] = useState<DailyRecord>(() => loadRecordFromLocalStorage(formattedDate));
-  const [isMounted, setIsMounted] = useState(false);
+  const [record, setRecord] = useState<DailyRecord | null>(null);
   
   const { toast } = useToast();
+  const { user, loading: userLoading } = useUser();
+  const firestore = useFirestore();
+
+  const recordRef = useMemo(() => {
+    if (!user) return undefined;
+    return doc(firestore, 'users', user.uid, 'records', formattedDate);
+  }, [user, firestore, formattedDate]);
+
+  const { data: recordData, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
 
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
   const [openingCash, setOpeningCash] = useState(0);
   
-  // Effect to handle client-side mounting
+  // Effect to set initial record or create a new one
   useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  // Effect to load data when date changes
-  useEffect(() => {
-    if(isMounted) {
-      const newRecord = loadRecordFromLocalStorage(formattedDate);
-      setRecord(newRecord);
+    if (!recordLoading && !userLoading) {
+      if (recordData) {
+        setRecord(recalculateTotals(recordData));
+      } else {
+        // If no record, create a new one for the date.
+        const newRecord = { ...mockDailyRecord, date: formattedDate };
+        // We don't save it to Firestore here, we save it when there's a change.
+        setRecord(recalculateTotals(newRecord));
+      }
     }
-  }, [formattedDate, isMounted]);
+  }, [recordData, recordLoading, userLoading, formattedDate]);
 
   // Effect to update editing fields when record loads
   useEffect(() => {
@@ -149,11 +113,17 @@ export default function Dashboard() {
   });
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
+    if (!user) return;
+    
     setRecord(prev => {
-        const newRecord = setter(prev);
-        const calculatedRecord = recalculateTotals(newRecord);
-        saveRecordToLocalStorage(calculatedRecord);
-        return calculatedRecord;
+      if (!prev) return null; // Should not happen
+      const newRecord = setter(prev);
+      const calculatedRecord = recalculateTotals(newRecord);
+      
+      const recordRef = doc(firestore, 'users', user.uid, 'records', calculatedRecord.date);
+      setDoc(recordRef, calculatedRecord, { merge: true });
+
+      return calculatedRecord;
     })
   };
 
@@ -176,7 +146,7 @@ export default function Dashboard() {
     });
   };
 
-  if (!isMounted || !record) {
+  if (userLoading || recordLoading || !record) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />

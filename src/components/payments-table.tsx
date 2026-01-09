@@ -18,9 +18,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Banknote } from 'lucide-react';
 import type { DailyRecord, Payment } from '@/lib/types';
 import { AddPaymentForm } from './add-payment-form';
+import { AddWithdrawalForm } from './add-withdrawal-form';
 import {
   Sheet,
   SheetContent,
@@ -39,6 +40,7 @@ interface PaymentsTableProps {
 
 export function PaymentsTable({ payments, setRecord, currencyFormatter }: PaymentsTableProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isWithdrawSheetOpen, setIsWithdrawSheetOpen] = useState(false);
 
   return (
     <Card>
@@ -49,7 +51,26 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
             Your expenses for the selected day.
           </CardDescription>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+           <Sheet open={isWithdrawSheetOpen} onOpenChange={setIsWithdrawSheetOpen}>
+            <SheetTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-1">
+                <Banknote className="h-3.5 w-3.5" />
+                <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
+                  Withdraw
+                </span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle className="font-headline">Add Withdrawal</SheetTitle>
+                <SheetDescription>
+                  Enter the amount you withdrew from your bank account to cash.
+                </SheetDescription>
+              </SheetHeader>
+              <AddWithdrawalForm setRecord={setRecord} setSheetOpen={setIsWithdrawSheetOpen} />
+            </SheetContent>
+          </Sheet>
           <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetTrigger asChild>
               <Button size="sm" className="gap-1 bg-accent text-accent-foreground hover:bg-accent/90">
@@ -101,7 +122,7 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
                   </div>
                 </TableCell>
                 <TableCell className="hidden sm:table-cell">
-                  <Badge variant="outline">{payment.category}</Badge>
+                  <Badge variant={payment.category === 'Withdrawal' ? 'secondary' : 'outline'}>{payment.category}</Badge>
                 </TableCell>
                 <TableCell className="hidden sm:table-cell">{payment.paymentMode}</TableCell>
                 <TableCell className="text-right">
@@ -129,3 +150,5 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
     </Card>
   );
 }
+
+    

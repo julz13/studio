@@ -35,11 +35,15 @@ export default function Dashboard() {
 
   const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
     const cashSpent = updatedRecord.payments.filter(p => p.paymentMode === 'Cash').reduce((sum, p) => sum + p.amount, 0);
-    const accountSpent = updatedRecord.payments.filter(p => p.paymentMode !== 'Cash').reduce((sum, p) => sum + p.amount, 0);
+    const accountSpent = updatedRecord.payments.filter(p => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
     const totalSpent = cashSpent + accountSpent;
+    
+    const totalWithdrawals = updatedRecord.payments
+      .filter(p => p.category === 'Withdrawal')
+      .reduce((sum, p) => sum + p.amount, 0);
 
-    const closingAccount = updatedRecord.balances.opening.account - accountSpent;
-    const closingCash = updatedRecord.balances.opening.cash - cashSpent;
+    const closingAccount = updatedRecord.balances.opening.account - accountSpent - totalWithdrawals;
+    const closingCash = updatedRecord.balances.opening.cash + totalWithdrawals - cashSpent;
 
     return {
       ...updatedRecord,
@@ -84,6 +88,11 @@ export default function Dashboard() {
     setOpeningAccount(record.balances.opening.account);
     setOpeningCash(record.balances.opening.cash);
   }, [record.balances.opening]);
+
+  useEffect(() => {
+    setRecord(recalculateTotals(record));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   const handleExport = () => {
@@ -245,3 +254,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+    

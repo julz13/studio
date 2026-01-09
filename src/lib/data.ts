@@ -8,8 +8,8 @@ export const mockDailyRecord: DailyRecord = {
       cash: 2000
     },
     closing: {
-      account: 24330,
-      cash: 1720
+      account: 23660,
+      cash: 2720
     }
   },
   payments: [
@@ -32,6 +32,15 @@ export const mockDailyRecord: DailyRecord = {
       notes: "Office travel"
     },
     {
+        id: "4",
+        item: "Cash Withdrawal",
+        category: "Withdrawal",
+        paymentMode: "N/A",
+        amount: 1000,
+        time: "12:00",
+        notes: "ATM"
+    },
+    {
       id: "3",
       item: "Grocery",
       category: "Shopping",
@@ -50,3 +59,5 @@ export const mockDailyRecord: DailyRecord = {
     currency: "INR"
   }
 };
+
+    

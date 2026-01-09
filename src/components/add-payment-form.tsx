@@ -66,11 +66,15 @@ export function AddPaymentForm({ setRecord, setSheetOpen }: AddPaymentFormProps)
       const updatedPayments = [...prevRecord.payments, newPayment].sort((a, b) => a.time.localeCompare(b.time));
       
       const cashSpent = updatedPayments.filter(p => p.paymentMode === 'Cash').reduce((sum, p) => sum + p.amount, 0);
-      const accountSpent = updatedPayments.filter(p => p.paymentMode !== 'Cash').reduce((sum, p) => sum + p.amount, 0);
+      const accountSpent = updatedPayments.filter(p => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
       const totalSpent = cashSpent + accountSpent;
 
-      const closingAccount = prevRecord.balances.opening.account - accountSpent;
-      const closingCash = prevRecord.balances.opening.cash - cashSpent;
+      const totalWithdrawals = updatedPayments
+        .filter(p => p.category === 'Withdrawal')
+        .reduce((sum, p) => sum + p.amount, 0);
+
+      const closingAccount = prevRecord.balances.opening.account - accountSpent - totalWithdrawals;
+      const closingCash = prevRecord.balances.opening.cash + totalWithdrawals - cashSpent;
 
       return {
         ...prevRecord,
@@ -212,3 +216,5 @@ export function AddPaymentForm({ setRecord, setSheetOpen }: AddPaymentFormProps)
     </Form>
   );
 }
+
+    

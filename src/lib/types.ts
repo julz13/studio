@@ -1,8 +1,8 @@
 export interface Payment {
   id: string;
   item: string;
-  category: "Food" | "Transport" | "Shopping" | "Entertainment" | "Utilities" | "Other";
-  paymentMode: "Cash" | "UPI" | "Card";
+  category: "Food" | "Transport" | "Shopping" | "Entertainment" | "Utilities" | "Withdrawal" | "Other";
+  paymentMode: "Cash" | "UPI" | "Card" | "N/A";
   amount: number;
   time: string;
   notes?: string;
@@ -30,3 +30,5 @@ export interface DailyRecord {
     currency: "INR" | "USD" | "EUR";
   };
 }
+
+    

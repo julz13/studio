@@ -1,4 +1,4 @@
-import { Utensils, Car, ShoppingCart, Clapperboard, Home, HelpCircle } from "lucide-react";
+import { Utensils, Car, ShoppingCart, Clapperboard, Home, HelpCircle, Landmark } from "lucide-react";
 import type { Payment } from "@/lib/types";
 
 interface CategoryIconProps {
@@ -13,9 +13,12 @@ export function CategoryIcon({ category, className }: CategoryIconProps) {
     Shopping: ShoppingCart,
     Entertainment: Clapperboard,
     Utilities: Home,
+    Withdrawal: Landmark,
     Other: HelpCircle,
   };
 
   const Icon = iconMap[category] || HelpCircle;
   return <Icon className={className} />;
 }
+
+    

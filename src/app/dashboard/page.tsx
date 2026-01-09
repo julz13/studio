@@ -98,9 +98,12 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    const createNewDayRecord = async () => {
-        if (!firestore || !user?.uid || !recordId || !recordRef) return;
+    if (userLoading || recordLoading || !firestore || !user?.uid || !recordId || !recordRef) {
+      return;
+    }
 
+    if (record === null) {
+      const createNewDayRecord = async () => {
         try {
             const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
             const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
@@ -137,18 +140,11 @@ export default function Dashboard() {
                 description: "Could not create a new daily record.",
             });
         }
-    };
-    
-    // This effect runs when user/record loading is done
-    if (!userLoading && !recordLoading) {
-      // If the record is null, it means it doesn't exist for the selected date.
-      if (record === null) {
-        createNewDayRecord();
-      } else if (record) {
-        // If the record exists, update the local state for editing.
-        setOpeningAccount(record.balances.opening.account);
-        setOpeningCash(record.balances.opening.cash);
-      }
+      };
+      createNewDayRecord();
+    } else if (record) {
+      setOpeningAccount(record.balances.opening.account);
+      setOpeningCash(record.balances.opening.cash);
     }
   }, [userLoading, recordLoading, record, firestore, user?.uid, recordId, recordRef, toast]);
   
@@ -188,7 +184,7 @@ export default function Dashboard() {
     });
   };
 
-  const isLoading = userLoading || recordLoading || record === undefined;
+  const isLoading = userLoading || recordLoading || record === undefined || record === null;
 
   if (isLoading) {
     return (
@@ -196,17 +192,6 @@ export default function Dashboard() {
         <Header />
         <main className="flex flex-1 items-center justify-center">
           <p>Loading your financial records...</p>
-        </main>
-      </div>
-    );
-  }
-
-  if (record === null) {
-     return (
-      <div className="flex min-h-screen w-full flex-col bg-background">
-        <Header />
-        <main className="flex flex-1 items-center justify-center">
-          <p>Creating today's record...</p>
         </main>
       </div>
     );

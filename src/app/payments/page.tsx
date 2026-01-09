@@ -78,9 +78,12 @@ export default function PaymentsPage() {
   });
 
   useEffect(() => {
-     const createNewDayRecord = async () => {
-        if (!firestore || !user?.uid || !recordId || !recordRef) return;
+    if (userLoading || recordLoading || !firestore || !user?.uid || !recordId || !recordRef) {
+      return;
+    }
 
+    if (record === null) {
+      const createNewDayRecord = async () => {
         try {
             const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
             const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
@@ -117,12 +120,8 @@ export default function PaymentsPage() {
                 description: "Could not create a new daily record.",
             });
         }
-    };
-    
-    if (!userLoading && !recordLoading) {
-      if (record === null) {
-        createNewDayRecord();
-      }
+      };
+      createNewDayRecord();
     }
   }, [userLoading, recordLoading, record, firestore, user?.uid, recordId, recordRef, toast]);
 
@@ -172,7 +171,7 @@ export default function PaymentsPage() {
     }
   };
 
-  const isLoading = userLoading || recordLoading || record === undefined;
+  const isLoading = userLoading || recordLoading || record === undefined || record === null;
 
   if (isLoading) {
     return (
@@ -184,17 +183,6 @@ export default function PaymentsPage() {
       </div>
     );
   }
-  
-  if (record === null) {
-    return (
-     <div className="flex min-h-screen w-full flex-col bg-background">
-       <Header />
-       <main className="flex flex-1 items-center justify-center">
-         <p>Creating today's record...</p>
-       </main>
-     </div>
-   );
- }
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">

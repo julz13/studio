@@ -71,6 +71,8 @@ export default function PaymentsPage() {
 
   const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
 
+  const [localRecord, setLocalRecord] = useState<DailyRecord | null>(null);
+
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
@@ -78,8 +80,11 @@ export default function PaymentsPage() {
   });
 
   useEffect(() => {
-    const createNewRecord = async () => {
-      if (user?.uid && recordId && record === null) {
+    if (record) {
+      setLocalRecord(record);
+    } else if (record === null && user?.uid && recordId) {
+      // Record does not exist, create a new one locally
+      const createNewRecord = async () => {
         try {
           const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
           const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
@@ -91,7 +96,7 @@ export default function PaymentsPage() {
             newOpening = yesterdayData.balances.closing;
           }
           
-          const newRecord = {
+          const newRecordData = {
             ...mockDailyRecord,
             date: recordId,
             balances: {
@@ -99,15 +104,19 @@ export default function PaymentsPage() {
               opening: newOpening,
             },
           };
-          const calculatedRecord = recalculateTotals(newRecord);
+          const calculatedRecord = recalculateTotals(newRecordData);
+          setLocalRecord(calculatedRecord);
           
-          setDoc(recordRef as DocumentReference<DocumentData>, calculatedRecord).catch(async (serverError) => {
-             errorEmitter.emit('permission-error', new FirestorePermissionError({
-                path: (recordRef as DocumentReference<DocumentData>).path,
-                operation: 'create',
-                requestResourceData: calculatedRecord,
-             }));
-          });
+          // Save the new record to Firestore in the background
+          if (recordRef) {
+            setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
+               errorEmitter.emit('permission-error', new FirestorePermissionError({
+                  path: recordRef.path,
+                  operation: 'create',
+                  requestResourceData: calculatedRecord,
+               }));
+            });
+          }
         } catch (error) {
           console.error("Error creating new record:", error);
           toast({
@@ -117,15 +126,17 @@ export default function PaymentsPage() {
           });
         }
       }
-    };
-    createNewRecord();
-  }, [user?.uid, recordId, record, firestore, recordRef, toast]);
+      createNewRecord();
+    }
+  }, [record, user?.uid, recordId, firestore, recordRef, toast]);
+
 
   const handleSetRecord = useCallback( (setter: (prev: DailyRecord) => DailyRecord) => {
-      if (!recordRef || !record) return;
+      if (!recordRef || !localRecord) return;
       
-      const newRecord = setter(record);
+      const newRecord = setter(localRecord);
       const calculatedRecord = recalculateTotals(newRecord);
+      setLocalRecord(calculatedRecord);
 
       setDoc(recordRef, calculatedRecord, { merge: true }).catch(async (serverError) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -135,13 +146,13 @@ export default function PaymentsPage() {
         }));
       });
     },
-    [record, recordRef]
+    [localRecord, recordRef]
   );
 
   const handleExport = () => {
-    if (!record) return;
-    const csvData = record.payments.map((p) => ({
-      Date: record.date,
+    if (!localRecord) return;
+    const csvData = localRecord.payments.map((p) => ({
+      Date: localRecord.date,
       Time: p.time,
       Item: p.item,
       Category: p.category,
@@ -159,7 +170,7 @@ export default function PaymentsPage() {
       link.setAttribute('href', url);
       link.setAttribute(
         'download',
-        `FinanceFlow_export_${record.date}.csv`
+        `FinanceFlow_export_${localRecord.date}.csv`
       );
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
@@ -168,7 +179,7 @@ export default function PaymentsPage() {
     }
   };
 
-  const isLoading = userLoading || recordLoading || record === undefined;
+  const isLoading = userLoading || recordLoading || (record === undefined && localRecord === null);
 
   if (isLoading) {
     return (
@@ -181,12 +192,12 @@ export default function PaymentsPage() {
     );
   }
   
-  if (!record) {
+  if (!localRecord) {
      return (
         <div className="flex min-h-screen w-full flex-col bg-background">
              <Header />
              <main className="flex flex-1 items-center justify-center">
-                <p>Creating today's record...</p>
+                <p>Could not load record.</p>
              </main>
         </div>
     )
@@ -230,7 +241,7 @@ export default function PaymentsPage() {
             </Popover>
             <Button
               onClick={handleExport}
-              disabled={!record || record.payments.length === 0}
+              disabled={!localRecord || localRecord.payments.length === 0}
             >
               <Download className="mr-2 h-4 w-4" />
               Export
@@ -238,7 +249,7 @@ export default function PaymentsPage() {
           </div>
         </div>
         <PaymentsTable
-          payments={record.payments}
+          payments={localRecord.payments}
           setRecord={handleSetRecord}
           currencyFormatter={currencyFormatter}
         />

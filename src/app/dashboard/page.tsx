@@ -85,15 +85,22 @@ export default function Dashboard() {
   const [openingAccount, setOpeningAccount] = useState(0);
   const [openingCash, setOpeningCash] = useState(0);
 
+  const [localRecord, setLocalRecord] = useState<DailyRecord | null>(null);
+
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 0,
   });
-
+  
   useEffect(() => {
-    const createNewRecord = async () => {
-      if (user?.uid && recordId && record === null) { // record is explicitly null (doesn't exist)
+    if (record) {
+      setLocalRecord(record);
+      setOpeningAccount(record.balances.opening.account);
+      setOpeningCash(record.balances.opening.cash);
+    } else if (record === null && user?.uid && recordId) {
+      // Record does not exist, create a new one locally
+      const createNewRecord = async () => {
         try {
           const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
           const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
@@ -105,7 +112,7 @@ export default function Dashboard() {
             newOpening = yesterdayData.balances.closing;
           }
           
-          const newRecord = {
+          const newRecordData = {
             ...mockDailyRecord,
             date: recordId,
             balances: {
@@ -113,15 +120,22 @@ export default function Dashboard() {
               opening: newOpening,
             },
           };
-          const calculatedRecord = recalculateTotals(newRecord);
+          const calculatedRecord = recalculateTotals(newRecordData);
+          setLocalRecord(calculatedRecord);
+          setOpeningAccount(calculatedRecord.balances.opening.account);
+          setOpeningCash(calculatedRecord.balances.opening.cash);
           
-          setDoc(recordRef as DocumentReference<DocumentData>, calculatedRecord).catch(async (serverError) => {
-             errorEmitter.emit('permission-error', new FirestorePermissionError({
-                path: (recordRef as DocumentReference<DocumentData>).path,
-                operation: 'create',
-                requestResourceData: calculatedRecord,
-             }));
-          });
+          // Save the new record to Firestore in the background
+          if (recordRef) {
+            setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
+               errorEmitter.emit('permission-error', new FirestorePermissionError({
+                  path: recordRef.path,
+                  operation: 'create',
+                  requestResourceData: calculatedRecord,
+               }));
+            });
+          }
+
         } catch (error) {
           console.error("Error creating new record:", error);
           toast({
@@ -131,22 +145,17 @@ export default function Dashboard() {
           });
         }
       }
-    };
-    createNewRecord();
-  }, [user?.uid, recordId, record, firestore, recordRef, toast]);
-  
-  useEffect(() => {
-    if (record) {
-      setOpeningAccount(record.balances.opening.account);
-      setOpeningCash(record.balances.opening.cash);
+      createNewRecord();
     }
-  }, [record]);
+  }, [record, user?.uid, recordId, firestore, recordRef, toast]);
+
 
   const handleSetRecord = useCallback( (setter: (prev: DailyRecord) => DailyRecord) => {
-      if (!recordRef || !record) return;
+      if (!recordRef || !localRecord) return;
       
-      const newRecord = setter(record);
+      const newRecord = setter(localRecord);
       const calculatedRecord = recalculateTotals(newRecord);
+      setLocalRecord(calculatedRecord);
 
       setDoc(recordRef, calculatedRecord, { merge: true }).catch(async (serverError) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -156,16 +165,16 @@ export default function Dashboard() {
         }));
       });
     },
-    [record, recordRef]
+    [localRecord, recordRef]
   );
   
   const handleSaveBalances = () => {
-    if (!record) return;
+    if (!localRecord) return;
     
     const updatedRecordWithNewOpening = {
-      ...record,
+      ...localRecord,
       balances: {
-        ...record.balances,
+        ...localRecord.balances,
         opening: {
           account: openingAccount,
           cash: openingCash,
@@ -182,7 +191,7 @@ export default function Dashboard() {
     });
   };
 
-  const isLoading = userLoading || recordLoading || record === undefined;
+  const isLoading = userLoading || recordLoading || (record === undefined && localRecord === null);
 
   if (isLoading) {
     return (
@@ -195,12 +204,12 @@ export default function Dashboard() {
     );
   }
 
-  if (!record) {
+  if (!localRecord) {
      return (
         <div className="flex min-h-screen w-full flex-col bg-background">
              <Header />
              <main className="flex flex-1 items-center justify-center">
-                <p>Creating today's record...</p>
+                <p>Could not load record.</p>
              </main>
         </div>
     )
@@ -245,12 +254,12 @@ export default function Dashboard() {
           </div>
         </div>
         <SummaryCards
-          totals={record.totals}
+          totals={localRecord.totals}
           currencyFormatter={currencyFormatter}
         />
         <div className="grid gap-4 md:gap-8 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <ExpensesChart payments={record.payments} />
+            <ExpensesChart payments={localRecord.payments} />
           </div>
           <div className="lg:col-span-1 flex flex-col gap-4">
             <Card>
@@ -298,11 +307,11 @@ export default function Dashboard() {
                     />
                   ) : (
                     <p className="text-2xl font-semibold">
-                      {currencyFormatter.format(record.balances.opening.account)}
+                      {currencyFormatter.format(localRecord.balances.opening.account)}
                     </p>
                   )}
                   <p className="text-2xl font-semibold text-right">
-                    {currencyFormatter.format(record.balances.closing.account)}
+                    {currencyFormatter.format(localRecord.balances.closing.account)}
                   </p>
                   <p className="text-sm text-muted-foreground">Account</p>
                   <p className="text-sm text-muted-foreground text-right">
@@ -321,11 +330,11 @@ export default function Dashboard() {
                     />
                   ) : (
                     <p className="text-2xl font-semibold">
-                      {currencyFormatter.format(record.balances.opening.cash)}
+                      {currencyFormatter.format(localRecord.balances.opening.cash)}
                     </p>
                   )}
                   <p className="text-2xl font-semibold text-right">
-                    {currencyFormatter.format(record.balances.closing.cash)}
+                    {currencyFormatter.format(localRecord.balances.closing.cash)}
                   </p>
                   <p className="text-sm text-muted-foreground">Cash</p>
                   <p className="text-sm text-muted-foreground text-right">

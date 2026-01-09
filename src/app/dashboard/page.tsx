@@ -97,50 +97,49 @@ export default function Dashboard() {
     }
   }, [record]);
 
-  useEffect(() => {
-    const createNewRecordIfNeeded = async () => {
-        if (record === null && !recordLoading && user?.uid && recordId && recordRef && firestore) {
-            try {
-                const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
-                const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
-                const yesterdaySnap = await getDoc(yesterdayRef);
+  const handleCreateRecord = useCallback(async () => {
+    if (!recordRef || !firestore || !user?.uid || !recordId) return;
 
-                let newOpening = { account: 0, cash: 0 };
-                if (yesterdaySnap.exists()) {
-                    const yesterdayData = yesterdaySnap.data() as DailyRecord;
-                    newOpening = yesterdayData.balances.closing;
-                }
-                
-                const newRecordData = {
-                    ...mockDailyRecord,
-                    date: recordId,
-                    balances: {
-                        ...mockDailyRecord.balances,
-                        opening: newOpening,
-                    },
-                };
-                const calculatedRecord = recalculateTotals(newRecordData);
-                
-                // By not awaiting, we let the useDoc listener update the UI.
-                setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
-                    errorEmitter.emit('permission-error', new FirestorePermissionError({
-                        path: recordRef.path,
-                        operation: 'create',
-                        requestResourceData: calculatedRecord,
-                    }));
-                });
-            } catch (error) {
-                console.error("Error creating new record:", error);
-                toast({
-                    variant: "destructive",
-                    title: "Error",
-                    description: "Could not create a new daily record.",
-                });
-            }
+    try {
+        const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
+        const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
+        const yesterdaySnap = await getDoc(yesterdayRef);
+
+        let newOpening = { account: 0, cash: 0 };
+        if (yesterdaySnap.exists()) {
+            const yesterdayData = yesterdaySnap.data() as DailyRecord;
+            newOpening = yesterdayData.balances.closing;
         }
-    };
-    createNewRecordIfNeeded();
-}, [record, recordLoading, user?.uid, recordId, firestore, recordRef, toast]);
+        
+        const newRecordData = {
+            ...mockDailyRecord,
+            date: recordId,
+            balances: {
+                ...mockDailyRecord.balances,
+                opening: newOpening,
+            },
+        };
+        const calculatedRecord = recalculateTotals(newRecordData);
+        
+        await setDoc(recordRef, calculatedRecord);
+        toast({
+            title: "Record Created",
+            description: `Record for ${format(new Date(recordId), 'PPP')} has been created.`,
+        });
+    } catch (error) {
+        console.error("Error creating new record:", error);
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: recordRef.path,
+            operation: 'create',
+            requestResourceData: {}, // Can't know the data that failed here easily
+        }));
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Could not create a new daily record.",
+        });
+    }
+}, [recordId, recordRef, firestore, user?.uid, toast]);
 
 
   const handleSetRecord = useCallback( (setter: (prev: DailyRecord) => DailyRecord) => {
@@ -181,7 +180,7 @@ export default function Dashboard() {
     });
   };
 
-  const isLoading = userLoading || (recordLoading && record === undefined);
+  const isLoading = userLoading || recordLoading;
 
   if (isLoading) {
     return (
@@ -198,8 +197,9 @@ export default function Dashboard() {
      return (
         <div className="flex min-h-screen w-full flex-col bg-background">
              <Header />
-             <main className="flex flex-1 items-center justify-center">
-                <p>Creating today's record...</p>
+             <main className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
+                <p className="text-center">No record found for {date ? format(date, 'PPP') : 'the selected date'}.</p>
+                <Button onClick={handleCreateRecord}>Create Today's Record</Button>
              </main>
         </div>
     )

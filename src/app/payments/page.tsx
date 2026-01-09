@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
 import { PaymentsTable } from '@/components/payments-table';
@@ -17,28 +17,6 @@ import { unparse } from 'papaparse';
 import { mockDailyRecord } from '@/lib/data';
 
 const getLocalStorageKey = (date: string) => `finance-record-${date}`;
-
-const loadRecordFromLocalStorage = (date: string): DailyRecord => {
-  if (typeof window === 'undefined') {
-    return { ...mockDailyRecord, date };
-  }
-  const key = getLocalStorageKey(date);
-  const storedData = localStorage.getItem(key);
-  if (storedData) {
-    return JSON.parse(storedData);
-  }
-  // If no record for the date, create a new one
-  const newRecord = { ...mockDailyRecord, date };
-  localStorage.setItem(key, JSON.stringify(newRecord));
-  return newRecord;
-};
-
-const saveRecordToLocalStorage = (record: DailyRecord) => {
-  if (typeof window === 'undefined') return;
-  const key = getLocalStorageKey(record.date);
-  localStorage.setItem(key, JSON.stringify(record));
-};
-
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   const cashSpent = updatedRecord.payments
@@ -75,19 +53,60 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   };
 };
 
+const loadRecordFromLocalStorage = (date: string): DailyRecord => {
+    if (typeof window === 'undefined') {
+        return { ...mockDailyRecord, date };
+    }
+    const key = getLocalStorageKey(date);
+    const storedData = localStorage.getItem(key);
+    if (storedData) {
+      try {
+        const parsed = JSON.parse(storedData);
+         if (!parsed.balances.closing) {
+          return recalculateTotals(parsed);
+        }
+        return parsed;
+      } catch (e) {
+         console.error("Failed to parse localStorage data", e);
+      }
+    }
+    // If no record for the date, create a new one
+    const newRecord = { ...mockDailyRecord, date };
+    const yesterday = format(subDays(new Date(date), 1), 'yyyy-MM-dd');
+    const yesterdayKey = getLocalStorageKey(yesterday);
+    const yesterdayData = localStorage.getItem(yesterdayKey);
+    if (yesterdayData) {
+      try {
+        const yesterdayRecord = JSON.parse(yesterdayData);
+        const calculatedYesterday = recalculateTotals(yesterdayRecord);
+        newRecord.balances.opening.account = calculatedYesterday.balances.closing.account;
+        newRecord.balances.opening.cash = calculatedYesterday.balances.closing.cash;
+      } catch(e) {
+          console.error("Failed to parse yesterday's data", e);
+      }
+    }
+    const calculatedRecord = recalculateTotals(newRecord);
+    localStorage.setItem(key, JSON.stringify(calculatedRecord));
+    return calculatedRecord;
+};
+
+const saveRecordToLocalStorage = (record: DailyRecord) => {
+  if (typeof window === 'undefined') return;
+  const key = getLocalStorageKey(record.date);
+  localStorage.setItem(key, JSON.stringify(record));
+};
+
+
 export default function PaymentsPage() {
   const [date, setDate] = useState<Date | undefined>(new Date());
-  const formattedDate = date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
+  const formattedDate = useMemo(() => date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'), [date]);
 
   const [record, setRecord] = useState<DailyRecord>(() => loadRecordFromLocalStorage(formattedDate));
-  const [isLoading, setIsLoading] = useState(true);
 
   // Effect to load data when date changes
   useEffect(() => {
-    setIsLoading(true);
     const newRecord = loadRecordFromLocalStorage(formattedDate);
     setRecord(newRecord);
-    setIsLoading(false);
   }, [formattedDate]);
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
@@ -97,10 +116,12 @@ export default function PaymentsPage() {
   });
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
-    const newRecord = setter(record);
-    const calculatedRecord = recalculateTotals(newRecord);
-    setRecord(calculatedRecord);
-    saveRecordToLocalStorage(calculatedRecord);
+    setRecord(prev => {
+        const newRecord = setter(prev);
+        const calculatedRecord = recalculateTotals(newRecord);
+        saveRecordToLocalStorage(calculatedRecord);
+        return calculatedRecord;
+    })
   };
 
   const handleExport = () => {
@@ -133,7 +154,7 @@ export default function PaymentsPage() {
     }
   };
 
-  if (isLoading || !record) {
+  if (!record) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
 import { SummaryCards } from '@/components/summary-cards';
@@ -26,51 +26,6 @@ import { ExpensesChart } from '@/components/expenses-chart';
 import { mockDailyRecord } from '@/lib/data';
 
 const getLocalStorageKey = (date: string) => `finance-record-${date}`;
-
-const loadRecordFromLocalStorage = (date: string): DailyRecord => {
-  if (typeof window === 'undefined') {
-    return { ...mockDailyRecord, date };
-  }
-  const key = getLocalStorageKey(date);
-  const storedData = localStorage.getItem(key);
-  if (storedData) {
-    try {
-      // Ensure closing balances are calculated if not present
-      const parsed = JSON.parse(storedData);
-      if (!parsed.balances.closing) {
-        return recalculateTotals(parsed);
-      }
-      return parsed;
-    } catch (e) {
-      console.error("Failed to parse localStorage data", e);
-    }
-  }
-  // If no record for the date, or parsing failed, create a new one for yesterday
-  const newRecord = { ...mockDailyRecord, date };
-  // Check if yesterday's data exists to carry over closing balance
-  const yesterday = format(subDays(new Date(date), 1), 'yyyy-MM-dd');
-  const yesterdayKey = getLocalStorageKey(yesterday);
-  const yesterdayData = localStorage.getItem(yesterdayKey);
-  if (yesterdayData) {
-    try {
-      const yesterdayRecord = JSON.parse(yesterdayData);
-      const calculatedYesterday = recalculateTotals(yesterdayRecord);
-      newRecord.balances.opening.account = calculatedYesterday.balances.closing.account;
-      newRecord.balances.opening.cash = calculatedYesterday.balances.closing.cash;
-    } catch(e) {
-        console.error("Failed to parse yesterday's data", e);
-    }
-  }
-  const calculatedRecord = recalculateTotals(newRecord);
-  localStorage.setItem(key, JSON.stringify(calculatedRecord));
-  return calculatedRecord;
-};
-
-const saveRecordToLocalStorage = (record: DailyRecord) => {
-    if (typeof window === 'undefined') return;
-    const key = getLocalStorageKey(record.date);
-    localStorage.setItem(key, JSON.stringify(record));
-};
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   const cashSpent = updatedRecord.payments
@@ -107,12 +62,57 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   };
 };
 
+const loadRecordFromLocalStorage = (date: string): DailyRecord => {
+    if (typeof window === 'undefined') {
+      return { ...mockDailyRecord, date };
+    }
+    const key = getLocalStorageKey(date);
+    const storedData = localStorage.getItem(key);
+    if (storedData) {
+      try {
+        const parsed = JSON.parse(storedData);
+        // Ensure closing balances are calculated if not present
+        if (!parsed.balances.closing) {
+          return recalculateTotals(parsed);
+        }
+        return parsed;
+      } catch (e) {
+        console.error("Failed to parse localStorage data", e);
+      }
+    }
+    // If no record for the date, or parsing failed, create a new one
+    const newRecord = { ...mockDailyRecord, date };
+    // Check if yesterday's data exists to carry over closing balance
+    const yesterday = format(subDays(new Date(date), 1), 'yyyy-MM-dd');
+    const yesterdayKey = getLocalStorageKey(yesterday);
+    const yesterdayData = localStorage.getItem(yesterdayKey);
+    if (yesterdayData) {
+      try {
+        const yesterdayRecord = JSON.parse(yesterdayData);
+        // Ensure yesterday's totals are correct before carrying over
+        const calculatedYesterday = recalculateTotals(yesterdayRecord);
+        newRecord.balances.opening.account = calculatedYesterday.balances.closing.account;
+        newRecord.balances.opening.cash = calculatedYesterday.balances.closing.cash;
+      } catch(e) {
+          console.error("Failed to parse yesterday's data", e);
+      }
+    }
+    const calculatedRecord = recalculateTotals(newRecord);
+    localStorage.setItem(key, JSON.stringify(calculatedRecord));
+    return calculatedRecord;
+};
+
+const saveRecordToLocalStorage = (record: DailyRecord) => {
+    if (typeof window === 'undefined') return;
+    const key = getLocalStorageKey(record.date);
+    localStorage.setItem(key, JSON.stringify(record));
+};
+
 export default function Dashboard() {
   const [date, setDate] = useState<Date | undefined>(new Date());
-  const formattedDate = date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
+  const formattedDate = useMemo(() => date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'), [date]);
   
   const [record, setRecord] = useState<DailyRecord>(() => loadRecordFromLocalStorage(formattedDate));
-  const [isLoading, setIsLoading] = useState(true);
   
   const { toast } = useToast();
 
@@ -122,10 +122,8 @@ export default function Dashboard() {
   
   // Effect to load data when date changes
   useEffect(() => {
-    setIsLoading(true);
     const newRecord = loadRecordFromLocalStorage(formattedDate);
     setRecord(newRecord);
-    setIsLoading(false);
   }, [formattedDate]);
 
   // Effect to update editing fields when record loads
@@ -170,7 +168,7 @@ export default function Dashboard() {
     });
   };
 
-  if (isLoading || !record) {
+  if (!record) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />

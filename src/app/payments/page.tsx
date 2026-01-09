@@ -55,7 +55,7 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
 
 const loadRecordFromLocalStorage = (date: string): DailyRecord => {
     if (typeof window === 'undefined') {
-        return { ...mockDailyRecord, date };
+        return { ...mockDailyRecord, date, payments: [] };
     }
     const key = getLocalStorageKey(date);
     const storedData = localStorage.getItem(key);
@@ -71,7 +71,7 @@ const loadRecordFromLocalStorage = (date: string): DailyRecord => {
       }
     }
     // If no record for the date, create a new one
-    const newRecord = { ...mockDailyRecord, date };
+    const newRecord = { ...mockDailyRecord, date, payments: [] };
     const yesterday = format(subDays(new Date(date), 1), 'yyyy-MM-dd');
     const yesterdayKey = getLocalStorageKey(yesterday);
     const yesterdayData = localStorage.getItem(yesterdayKey);
@@ -102,12 +102,20 @@ export default function PaymentsPage() {
   const formattedDate = useMemo(() => date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'), [date]);
 
   const [record, setRecord] = useState<DailyRecord>(() => loadRecordFromLocalStorage(formattedDate));
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Effect to handle client-side mounting
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Effect to load data when date changes
   useEffect(() => {
-    const newRecord = loadRecordFromLocalStorage(formattedDate);
-    setRecord(newRecord);
-  }, [formattedDate]);
+    if (isMounted) {
+      const newRecord = loadRecordFromLocalStorage(formattedDate);
+      setRecord(newRecord);
+    }
+  }, [formattedDate, isMounted]);
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -154,7 +162,7 @@ export default function PaymentsPage() {
     }
   };
 
-  if (!record) {
+  if (!isMounted || !record) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />

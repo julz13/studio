@@ -6,10 +6,10 @@ import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
 import { PaymentsTable } from '@/components/payments-table';
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIcon, Download, Edit, Save } from 'lucide-react';
+import { Calendar as CalendarIcon, Download } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { unparse } from 'papaparse';
 import { useToast } from '@/hooks/use-toast';
 
@@ -35,10 +35,7 @@ export default function PaymentsPage() {
 
   const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef, { listen: true });
 
-  const [localRecord, setLocalRecord] = useState<DailyRecord>(() => ({
-    ...mockDailyRecord,
-    date: recordId
-  }));
+  const [localRecord, setLocalRecord] = useState<DailyRecord | null>(null);
 
   const { toast } = useToast();
 
@@ -66,37 +63,35 @@ export default function PaymentsPage() {
     });
   }, [recordRef]);
 
-
   useEffect(() => {
-    const currentRecordId = date ? format(date, 'yyyy-MM-dd') : '';
-    
-    if (record) { // record is a valid DailyRecord from firestore
+    if (recordLoading || !date || !user?.uid) return;
+
+    if (record) {
       setLocalRecord(record);
-    } else if (record === null) { // record is null, meaning doc doesn't exist
-      // If the doc doesn't exist, create a new local one and save it.
-      const newRecord = {
-        ...mockDailyRecord,
-        date: currentRecordId,
-        // Carry over opening balances from the previous day's closing if available
-      };
-      setLocalRecord(newRecord);
-      if(recordRef) {
+    } else if (record === null) {
+      const yesterdayId = format(subDays(date, 1), 'yyyy-MM-dd');
+      const yesterdayRef = doc(firestore, `/users/${user.uid}/records/${yesterdayId}`);
+      getDoc(yesterdayRef).then(docSnap => {
+        const newRecord = { ...mockDailyRecord, date: recordId };
+        if (docSnap.exists()) {
+          const yesterdayRecord = docSnap.data() as DailyRecord;
+          newRecord.balances.opening.account = yesterdayRecord.balances.closing.account;
+          newRecord.balances.opening.cash = yesterdayRecord.balances.closing.cash;
+        }
+        setLocalRecord(newRecord);
         updateRecord(newRecord);
-      }
-    } else if (!recordLoading && !record) {
-      // Not loading and no record yet, create a default local one
-      setLocalRecord({
-        ...mockDailyRecord,
-        date: currentRecordId,
       });
     }
-  }, [date, record, recordRef, updateRecord, recordLoading]);
-
-  const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
-    const newRecord = setter(localRecord);
-    setLocalRecord(newRecord);
-    updateRecord(newRecord);
-  };
+  }, [date, record, recordLoading, user?.uid, firestore, recordId, updateRecord]);
+  
+  const handleSetRecord = useCallback((setter: (prev: DailyRecord) => DailyRecord) => {
+    setLocalRecord(prev => {
+        if (!prev) return null;
+        const newRecord = setter(prev);
+        updateRecord(newRecord);
+        return newRecord;
+    });
+  }, [updateRecord]);
 
 
   const handleExport = () => {
@@ -125,6 +120,17 @@ export default function PaymentsPage() {
       document.body.removeChild(link);
     }
   };
+
+  if (!localRecord || recordLoading) {
+    return (
+        <div className="flex min-h-screen w-full flex-col bg-background">
+             <Header />
+             <main className="flex flex-1 items-center justify-center">
+                <p>Loading your financial records...</p>
+             </main>
+        </div>
+    )
+  }
   
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
@@ -168,3 +174,5 @@ export default function PaymentsPage() {
     </div>
   );
 }
+
+    

@@ -64,13 +64,16 @@ export default function PaymentsPage() {
   }, [recordRef]);
 
   useEffect(() => {
-    if (recordLoading || !date || !user?.uid) return;
-
+    if (recordLoading || !date || !user?.uid) {
+      return;
+    }
+  
     if (record) {
       setLocalRecord(record);
     } else if (record === null) {
       const yesterdayId = format(subDays(date, 1), 'yyyy-MM-dd');
       const yesterdayRef = doc(firestore, `/users/${user.uid}/records/${yesterdayId}`);
+      
       getDoc(yesterdayRef).then(docSnap => {
         const newRecord = { ...mockDailyRecord, date: recordId };
         if (docSnap.exists()) {
@@ -121,7 +124,7 @@ export default function PaymentsPage() {
     }
   };
 
-  if (!localRecord || recordLoading) {
+  if (!localRecord) {
     return (
         <div className="flex min-h-screen w-full flex-col bg-background">
              <Header />

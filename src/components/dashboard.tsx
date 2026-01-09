@@ -68,23 +68,34 @@ export default function Dashboard() {
     });
   }, [recordRef]);
 
-
   useEffect(() => {
-    if (recordLoading || !date || !user?.uid) return;
+    if (recordLoading || !date || !user?.uid) {
+      // While loading or if prerequisites aren't met, do nothing.
+      return;
+    }
 
     if (record) {
+      // If a record is found in Firestore, use it.
       setLocalRecord(record);
     } else if (record === null) {
+      // If useDoc confirms the record does not exist (record is null)
       const yesterdayId = format(subDays(date, 1), 'yyyy-MM-dd');
       const yesterdayRef = doc(firestore, `/users/${user.uid}/records/${yesterdayId}`);
+      
       getDoc(yesterdayRef).then(docSnap => {
+        // Start with a fresh mock record for the current date.
         const newRecord = { ...mockDailyRecord, date: recordId };
+        
+        // If yesterday's record exists, carry over the closing balance.
         if (docSnap.exists()) {
           const yesterdayRecord = docSnap.data() as DailyRecord;
           newRecord.balances.opening.account = yesterdayRecord.balances.closing.account;
           newRecord.balances.opening.cash = yesterdayRecord.balances.closing.cash;
         }
+        
+        // Set the local state immediately to unblock the UI.
         setLocalRecord(newRecord);
+        // Save the newly created record to Firestore.
         updateRecord(newRecord);
       });
     }
@@ -162,7 +173,7 @@ export default function Dashboard() {
     });
   };
 
-  if (!localRecord || recordLoading) {
+  if (!localRecord) {
     return (
         <div className="flex min-h-screen w-full flex-col bg-background">
              <Header />

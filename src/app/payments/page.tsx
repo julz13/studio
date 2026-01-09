@@ -105,7 +105,7 @@ export default function PaymentsPage() {
             };
             const calculatedRecord = recalculateTotals(newRecordData);
             
-            await setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
+            setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
                 errorEmitter.emit('permission-error', new FirestorePermissionError({
                     path: recordRef.path,
                     operation: 'create',
@@ -123,7 +123,8 @@ export default function PaymentsPage() {
       };
       createNewDayRecord();
     }
-  }, [userLoading, recordLoading, record, firestore, user?.uid, recordId, recordRef, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLoading, recordLoading, record, firestore, user?.uid, recordId, recordRef]);
 
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
@@ -171,7 +172,7 @@ export default function PaymentsPage() {
     }
   };
 
-  const isLoading = userLoading || recordLoading || record === undefined || record === null;
+  const isLoading = userLoading || recordLoading || record === undefined;
 
   if (isLoading) {
     return (
@@ -183,6 +184,17 @@ export default function PaymentsPage() {
       </div>
     );
   }
+  
+  if (record === null) {
+    return (
+     <div className="flex min-h-screen w-full flex-col bg-background">
+       <Header />
+       <main className="flex flex-1 items-center justify-center">
+         <p>Creating today's record...</p>
+       </main>
+     </div>
+   );
+ }
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">

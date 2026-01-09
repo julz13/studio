@@ -121,27 +121,28 @@ export default function Dashboard() {
         };
         const calculatedRecord = recalculateTotals(newRecordData);
         
-        await setDoc(recordRef, calculatedRecord);
+        setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
+           errorEmitter.emit('permission-error', new FirestorePermissionError({
+                path: recordRef.path,
+                operation: 'create',
+                requestResourceData: calculatedRecord,
+            }));
+             toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Could not create a new daily record.",
+            });
+        });
     } catch (error) {
         console.error("Error creating new record:", error);
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-            path: recordRef.path,
-            operation: 'create',
-            requestResourceData: {}, // Can't know the data that failed here easily
-        }));
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Could not create a new daily record.",
-        });
     }
-}, [recordId, recordRef, firestore, user?.uid, toast]);
+  }, [recordId, recordRef, firestore, user?.uid, toast]);
 
   useEffect(() => {
-    if (!recordLoading && record === null && user && recordId) {
+    if (!recordLoading && record === null && !userLoading && user) {
         handleCreateRecord();
     }
-  }, [recordLoading, record, user, recordId, handleCreateRecord])
+  }, [recordLoading, record, user, userLoading, handleCreateRecord]);
 
 
   const handleSetRecord = useCallback( (setter: (prev: DailyRecord) => DailyRecord) => {

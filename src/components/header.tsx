@@ -1,18 +1,13 @@
 'use client';
 
-import { LogOut, Menu, PlusCircle, Calendar as CalendarIcon } from 'lucide-react';
+import { LogOut, Menu, Calendar as CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
   SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
   SheetTrigger,
 } from '@/components/ui/sheet';
 import Link from 'next/link';
-import { AddPaymentForm } from './add-payment-form';
-import { useState, type Dispatch, type SetStateAction } from 'react';
 import type { DailyRecord } from '@/lib/types';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -57,7 +52,6 @@ interface HeaderProps {
 }
 
 export function Header({ setRecord }: HeaderProps) {
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const pathname = usePathname();
   const auth = useAuth();
   const router = useRouter();
@@ -119,28 +113,6 @@ export function Header({ setRecord }: HeaderProps) {
         </SheetContent>
       </Sheet>
       <div className="flex w-full items-center justify-end gap-4 md:ml-auto md:gap-2 lg:gap-4">
-        {setRecord && pathname === '/payments' && (
-           <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-            <SheetTrigger asChild>
-              <Button size="sm" className="gap-1">
-                <PlusCircle className="h-3.5 w-3.5" />
-                <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                  Add Payment
-                </span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent>
-              <SheetHeader>
-                <SheetTitle className="font-headline">Add New Payment</SheetTitle>
-                <SheetDescription>
-                  Enter the details of your transaction below. Click save when you're done.
-                </SheetDescription>
-              </SheetHeader>
-              <AddPaymentForm setRecord={setRecord} setSheetOpen={setIsSheetOpen} />
-            </SheetContent>
-          </Sheet>
-        )}
-
         <Popover>
             <PopoverTrigger asChild>
               <Button

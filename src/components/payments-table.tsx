@@ -18,9 +18,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Banknote, Trash2, PlusCircle } from 'lucide-react';
+import { MoreHorizontal, Banknote, Trash2 } from 'lucide-react';
 import type { DailyRecord, Payment } from '@/lib/types';
-import { AddPaymentForm } from './add-payment-form';
 import { AddWithdrawalForm } from './add-withdrawal-form';
 import {
   Sheet,
@@ -50,7 +49,6 @@ interface PaymentsTableProps {
 }
 
 export function PaymentsTable({ payments, setRecord, currencyFormatter }: PaymentsTableProps) {
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isWithdrawSheetOpen, setIsWithdrawSheetOpen] = useState(false);
 
   const handleDelete = (paymentId: string) => {
@@ -90,25 +88,6 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
                 </SheetDescription>
               </SheetHeader>
               <AddWithdrawalForm setRecord={setRecord} setSheetOpen={setIsWithdrawSheetOpen} />
-            </SheetContent>
-          </Sheet>
-          <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-            <SheetTrigger asChild>
-              <Button size="sm" className="gap-1 bg-accent text-accent-foreground hover:bg-accent/90 md:hidden">
-                <PlusCircle className="h-3.5 w-3.5" />
-                <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                  Add Payment
-                </span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent>
-              <SheetHeader>
-                <SheetTitle className="font-headline">Add New Payment</SheetTitle>
-                <SheetDescription>
-                  Enter the details of your transaction below. Click save when you're done.
-                </SheetDescription>
-              </SheetHeader>
-              <AddPaymentForm setRecord={setRecord} setSheetOpen={setIsSheetOpen} />
             </SheetContent>
           </Sheet>
         </div>

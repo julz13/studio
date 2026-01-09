@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import type { DailyRecord } from '@/lib/types';
+import type { DailyRecord, Payment } from '@/lib/types';
 import { Header } from '@/components/header';
 import { PaymentsTable } from '@/components/payments-table';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Download, PlusCircle } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { unparse } from 'papaparse';
 import { mockDailyRecord } from '@/lib/data';
@@ -16,6 +16,15 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useDate } from '@/context/date-context';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetDescription,
+} from '@/components/ui/sheet';
+import { AddPaymentForm } from '@/components/add-payment-form';
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   const cashSpent = updatedRecord.payments
@@ -54,7 +63,7 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
 
 export default function PaymentsPage() {
   const { date, formattedDate } = useDate();
-
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [record, setRecord] = useState<DailyRecord | null>(null);
 
   const { user, loading: userLoading } = useUser();
@@ -81,7 +90,7 @@ export default function PaymentsPage() {
     const initializeRecord = async () => {
       if (recordData) {
         setRecord(recalculateTotals(recordData));
-      } else {
+      } else if (recordData === null) {
         const yesterday = subDays(date, 1);
         const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
         const yesterdayRef = doc(
@@ -223,7 +232,7 @@ export default function PaymentsPage() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
-      <Header setRecord={handleSetRecord} />
+      <Header />
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
         <div className="flex items-center gap-4">
           <div>
@@ -236,6 +245,31 @@ export default function PaymentsPage() {
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+              <SheetTrigger asChild>
+                <Button size="sm" className="gap-1">
+                  <PlusCircle className="h-3.5 w-3.5" />
+                  <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
+                    Add Payment
+                  </span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent>
+                <SheetHeader>
+                  <SheetTitle className="font-headline">
+                    Add New Payment
+                  </SheetTitle>
+                  <SheetDescription>
+                    Enter the details of your transaction below. Click save when
+                    you're done.
+                  </SheetDescription>
+                </SheetHeader>
+                <AddPaymentForm
+                  setRecord={handleSetRecord}
+                  setSheetOpen={setIsSheetOpen}
+                />
+              </SheetContent>
+            </Sheet>
             <Button
               onClick={handleExport}
               disabled={!record || record.payments.length === 0}

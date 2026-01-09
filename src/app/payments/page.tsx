@@ -79,13 +79,11 @@ export default function PaymentsPage() {
 
   // Effect to set initial record or create a new one
   useEffect(() => {
-    if (userLoading) return;
-    if (recordLoading) {
+    if (userLoading || recordLoading || recordData === undefined) {
       setRecord(null);
       return;
     }
     if (!user) return;
-
 
     const initializeRecord = async () => {
       if (recordData) {
@@ -143,6 +141,7 @@ export default function PaymentsPage() {
     };
 
     initializeRecord();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     recordData,
     recordLoading,

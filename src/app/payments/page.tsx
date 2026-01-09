@@ -68,39 +68,29 @@ export default function PaymentsPage() {
   const formattedDate = date ? format(date, 'yyyy-MM-dd') : '';
 
   const recordRef = useMemoFirebase(() => {
-    if (!user || !formattedDate) return undefined;
+    if (!user || !formattedDate || !db) return undefined;
     return doc(db, 'users', user.uid, 'records', formattedDate);
   }, [user, formattedDate, db]);
 
   const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCreatingRecord, setIsCreatingRecord] = useState(false);
-
-  useEffect(() => {
-    setIsLoading(userLoading || recordLoading);
-  }, [userLoading, recordLoading]);
+  const isLoading = userLoading || recordLoading;
 
   // Effect to create a new record if one doesn't exist for the selected date
   useEffect(() => {
-    if (!isLoading && !record && recordRef && !isCreatingRecord) {
-      const createNewRecord = async () => {
-        setIsCreatingRecord(true);
-        const newRecordData: DailyRecord = {
-          ...mockDailyRecord,
-          date: formattedDate,
-        };
-        try {
-          await setDoc(recordRef, newRecordData);
-        } catch (error) {
-          console.error("Error creating new record:", error);
-        } finally {
-          setIsCreatingRecord(false);
-        }
+    // Only run if there's no record, we are not loading, and the reference is valid
+    if (record === null && !isLoading && recordRef) {
+      const newRecordData: DailyRecord = {
+        ...mockDailyRecord,
+        date: formattedDate,
       };
-      createNewRecord();
+      // Use setDoc, but don't await it in useEffect to avoid race conditions
+      setDoc(recordRef, newRecordData).catch(error => {
+         console.error("Error creating new record:", error);
+      });
     }
-  }, [isLoading, record, recordRef, formattedDate, isCreatingRecord]);
+  }, [record, isLoading, recordRef, formattedDate]);
+
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -154,7 +144,7 @@ export default function PaymentsPage() {
     }
   };
 
-  if (isLoading || isCreatingRecord) {
+  if (isLoading || record === undefined) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
@@ -165,7 +155,8 @@ export default function PaymentsPage() {
     );
   }
 
-  if (!record) {
+  // Record is null, which means it doesn't exist yet and is being created
+  if (record === null) {
      return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />

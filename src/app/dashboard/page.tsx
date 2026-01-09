@@ -122,10 +122,6 @@ export default function Dashboard() {
         const calculatedRecord = recalculateTotals(newRecordData);
         
         await setDoc(recordRef, calculatedRecord);
-        toast({
-            title: "Record Created",
-            description: `Record for ${format(new Date(recordId), 'PPP')} has been created.`,
-        });
     } catch (error) {
         console.error("Error creating new record:", error);
         errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -140,6 +136,12 @@ export default function Dashboard() {
         });
     }
 }, [recordId, recordRef, firestore, user?.uid, toast]);
+
+  useEffect(() => {
+    if (!recordLoading && record === null && user && recordId) {
+        handleCreateRecord();
+    }
+  }, [recordLoading, record, user, recordId, handleCreateRecord])
 
 
   const handleSetRecord = useCallback( (setter: (prev: DailyRecord) => DailyRecord) => {
@@ -180,7 +182,7 @@ export default function Dashboard() {
     });
   };
 
-  const isLoading = userLoading || recordLoading;
+  const isLoading = userLoading || recordLoading || !record;
 
   if (isLoading) {
     return (
@@ -191,18 +193,6 @@ export default function Dashboard() {
         </main>
       </div>
     );
-  }
-
-  if (record === null) {
-     return (
-        <div className="flex min-h-screen w-full flex-col bg-background">
-             <Header />
-             <main className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
-                <p className="text-center">No record found for {date ? format(date, 'PPP') : 'the selected date'}.</p>
-                <Button onClick={handleCreateRecord}>Create Today's Record</Button>
-             </main>
-        </div>
-    )
   }
 
   return (

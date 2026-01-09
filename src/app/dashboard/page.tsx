@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { ExpensesChart } from '@/components/expenses-chart';
 import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, getDoc, DocumentReference, DocumentData } from 'firebase/firestore';
+import { doc, setDoc, getDoc, type DocumentReference } from 'firebase/firestore';
 import { mockDailyRecord } from '@/lib/data';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -98,7 +98,6 @@ export default function Dashboard() {
   }, [record]);
 
   useEffect(() => {
-    // This effect handles creating a new record if one doesn't exist for the selected date.
     if (record === null && !recordLoading && user?.uid && recordId && recordRef) {
       const createNewRecord = async () => {
         try {
@@ -122,7 +121,6 @@ export default function Dashboard() {
           };
           const calculatedRecord = recalculateTotals(newRecordData);
           
-          // Save the new record to Firestore. useDoc will pick up the change.
           await setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
              errorEmitter.emit('permission-error', new FirestorePermissionError({
                 path: recordRef.path,
@@ -184,7 +182,7 @@ export default function Dashboard() {
 
   const isLoading = userLoading || recordLoading;
 
-  if (isLoading) {
+  if (isLoading && record === undefined) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
@@ -200,7 +198,7 @@ export default function Dashboard() {
         <div className="flex min-h-screen w-full flex-col bg-background">
              <Header />
              <main className="flex flex-1 items-center justify-center">
-                <p>Could not load record. Try refreshing the page.</p>
+                <p>Creating today's record...</p>
              </main>
         </div>
     )

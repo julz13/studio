@@ -18,7 +18,7 @@ import { mockDailyRecord } from '@/lib/data';
 import { useUser } from '@/firebase/auth/use-user';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useFirestore } from '@/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
@@ -57,8 +57,8 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
 };
 
 export default function PaymentsPage() {
-  const [date, setDate] = useState<Date | undefined>(new Date());
-  const formattedDate = useMemo(() => date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'), [date]);
+  const [date, setDate] = useState<Date>(new Date());
+  const formattedDate = useMemo(() => format(date, 'yyyy-MM-dd'), [date]);
 
   const [record, setRecord] = useState<DailyRecord | null>(null);
   
@@ -74,15 +74,45 @@ export default function PaymentsPage() {
   
   // Effect to set initial record or create a new one
   useEffect(() => {
-    if (!recordLoading && !userLoading) {
+    if (recordLoading || userLoading || !user) return;
+
+    const initializeRecord = async () => {
       if (recordData) {
         setRecord(recalculateTotals(recordData));
       } else {
-        const newRecord = { ...mockDailyRecord, date: formattedDate };
-        setRecord(recalculateTotals(newRecord));
+        // No record for today, check yesterday for opening balances
+        const yesterday = subDays(date, 1);
+        const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
+        const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayStr);
+        
+        let opening = { account: 0, cash: 0 };
+        try {
+          const yesterdaySnap = await getDoc(yesterdayRef);
+          if (yesterdaySnap.exists()) {
+            opening = yesterdaySnap.data().balances.closing;
+          }
+        } catch (e) {
+          console.error("Could not fetch yesterday's record", e);
+        }
+        
+        const newRecord: DailyRecord = {
+          ...mockDailyRecord,
+          date: formattedDate,
+          balances: {
+            ...mockDailyRecord.balances,
+            opening: opening,
+          },
+        };
+
+        const calculatedRecord = recalculateTotals(newRecord);
+        // Save the newly created record for today
+        await setDoc(doc(firestore, 'users', user.uid, 'records', formattedDate), calculatedRecord);
+        setRecord(calculatedRecord);
       }
-    }
-  }, [recordData, recordLoading, userLoading, formattedDate]);
+    };
+
+    initializeRecord();
+  }, [recordData, recordLoading, userLoading, user, date, firestore, formattedDate]);
 
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
@@ -177,7 +207,7 @@ export default function PaymentsPage() {
                 <Calendar
                   mode="single"
                   selected={date}
-                  onSelect={setDate}
+                  onSelect={(d) => setDate(d || new Date())}
                   initialFocus
                   disabled={(d) => d > new Date() || d < subDays(new Date(), 30)}
                 />

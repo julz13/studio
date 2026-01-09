@@ -1,11 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { onAuthStateChanged, signInAnonymously, type User } from 'firebase/auth';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 import { useAuth } from '../provider';
+import { usePathname, useRouter } from 'next/navigation';
+
+const AUTH_PAGES = ['/login', '/register'];
 
 export function useUser() {
   const auth = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -13,23 +19,20 @@ export function useUser() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUser(user);
-        setLoading(false);
+        if (AUTH_PAGES.includes(pathname)) {
+          router.replace('/');
+        }
       } else {
-        // If no user is signed in, sign in anonymously.
-        signInAnonymously(auth)
-          .then((userCredential) => {
-            setUser(userCredential.user);
-            setLoading(false);
-          })
-          .catch((error) => {
-            console.error("Anonymous sign-in failed:", error);
-            setLoading(false);
-          });
+        setUser(null);
+        if (!AUTH_PAGES.includes(pathname)) {
+          router.replace('/login');
+        }
       }
+      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [auth]);
+  }, [auth, router, pathname]);
 
   return { user, loading };
 }

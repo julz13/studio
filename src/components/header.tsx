@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, PlusCircle } from 'lucide-react';
+import { LogOut, Menu, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -14,8 +14,11 @@ import Link from 'next/link';
 import { AddPaymentForm } from './add-payment-form';
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import type { DailyRecord } from '@/lib/types';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/firebase';
+import { signOut } from 'firebase/auth';
+import { useUser } from '@/firebase/auth/use-user';
 
 function Logo() {
   return (
@@ -47,6 +50,14 @@ interface HeaderProps {
 export function Header({ setRecord }: HeaderProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const pathname = usePathname();
+  const auth = useAuth();
+  const router = useRouter();
+  const { user } = useUser();
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    router.push('/login');
+  };
 
   const navItems = [
     { href: '/', label: 'Dashboard' },
@@ -118,6 +129,10 @@ export function Header({ setRecord }: HeaderProps) {
             </SheetContent>
           </Sheet>
         )}
+        {user && <span className="text-sm font-medium text-muted-foreground">{user.displayName}</span>}
+        <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Logout">
+          <LogOut className="h-5 w-5" />
+        </Button>
       </div>
     </header>
   );

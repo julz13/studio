@@ -15,8 +15,11 @@ import { Calendar } from '@/components/ui/calendar';
 import { format, subDays } from 'date-fns';
 import { unparse } from 'papaparse';
 import { mockDailyRecord } from '@/lib/data';
+import { useUser } from '@/firebase/auth/use-user';
+import { useDoc } from '@/firebase/firestore/use-doc';
+import { useFirestore } from '@/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
-const getLocalStorageKey = (date: string) => `finance-record-${date}`;
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   const cashSpent = updatedRecord.payments
@@ -53,69 +56,34 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   };
 };
 
-const loadRecordFromLocalStorage = (date: string): DailyRecord => {
-    if (typeof window === 'undefined') {
-        return { ...mockDailyRecord, date, payments: [] };
-    }
-    const key = getLocalStorageKey(date);
-    const storedData = localStorage.getItem(key);
-    if (storedData) {
-      try {
-        const parsed = JSON.parse(storedData);
-         if (!parsed.balances.closing) {
-          return recalculateTotals(parsed);
-        }
-        return parsed;
-      } catch (e) {
-         console.error("Failed to parse localStorage data", e);
-      }
-    }
-    // If no record for the date, create a new one
-    const newRecord = { ...mockDailyRecord, date, payments: [] };
-    const yesterday = format(subDays(new Date(date), 1), 'yyyy-MM-dd');
-    const yesterdayKey = getLocalStorageKey(yesterday);
-    const yesterdayData = localStorage.getItem(yesterdayKey);
-    if (yesterdayData) {
-      try {
-        const yesterdayRecord = JSON.parse(yesterdayData);
-        const calculatedYesterday = recalculateTotals(yesterdayRecord);
-        newRecord.balances.opening.account = calculatedYesterday.balances.closing.account;
-        newRecord.balances.opening.cash = calculatedYesterday.balances.closing.cash;
-      } catch(e) {
-          console.error("Failed to parse yesterday's data", e);
-      }
-    }
-    const calculatedRecord = recalculateTotals(newRecord);
-    localStorage.setItem(key, JSON.stringify(calculatedRecord));
-    return calculatedRecord;
-};
-
-const saveRecordToLocalStorage = (record: DailyRecord) => {
-  if (typeof window === 'undefined') return;
-  const key = getLocalStorageKey(record.date);
-  localStorage.setItem(key, JSON.stringify(record));
-};
-
-
 export default function PaymentsPage() {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const formattedDate = useMemo(() => date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'), [date]);
 
-  const [record, setRecord] = useState<DailyRecord>(() => loadRecordFromLocalStorage(formattedDate));
-  const [isMounted, setIsMounted] = useState(false);
+  const [record, setRecord] = useState<DailyRecord | null>(null);
+  
+  const { user, loading: userLoading } = useUser();
+  const firestore = useFirestore();
 
-  // Effect to handle client-side mounting
+  const recordRef = useMemo(() => {
+    if (!user) return undefined;
+    return doc(firestore, 'users', user.uid, 'records', formattedDate);
+  }, [user, firestore, formattedDate]);
+  
+  const { data: recordData, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
+  
+  // Effect to set initial record or create a new one
   useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  // Effect to load data when date changes
-  useEffect(() => {
-    if (isMounted) {
-      const newRecord = loadRecordFromLocalStorage(formattedDate);
-      setRecord(newRecord);
+    if (!recordLoading && !userLoading) {
+      if (recordData) {
+        setRecord(recalculateTotals(recordData));
+      } else {
+        const newRecord = { ...mockDailyRecord, date: formattedDate };
+        setRecord(recalculateTotals(newRecord));
+      }
     }
-  }, [formattedDate, isMounted]);
+  }, [recordData, recordLoading, userLoading, formattedDate]);
+
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -124,11 +92,17 @@ export default function PaymentsPage() {
   });
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
+    if (!user) return;
+    
     setRecord(prev => {
-        const newRecord = setter(prev);
-        const calculatedRecord = recalculateTotals(newRecord);
-        saveRecordToLocalStorage(calculatedRecord);
-        return calculatedRecord;
+      if (!prev) return null;
+      const newRecord = setter(prev);
+      const calculatedRecord = recalculateTotals(newRecord);
+      
+      const recordRef = doc(firestore, 'users', user.uid, 'records', calculatedRecord.date);
+      setDoc(recordRef, calculatedRecord, { merge: true });
+
+      return calculatedRecord;
     })
   };
 
@@ -162,7 +136,7 @@ export default function PaymentsPage() {
     }
   };
 
-  if (!isMounted || !record) {
+  if (userLoading || recordLoading || !record) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />

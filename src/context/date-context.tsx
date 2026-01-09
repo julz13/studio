@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 
 interface DateContextType {
@@ -12,8 +12,19 @@ interface DateContextType {
 const DateContext = createContext<DateContextType | undefined>(undefined);
 
 export function DateProvider({ children }: { children: React.ReactNode }) {
-  const [date, setDate] = useState<Date>(new Date());
-  const formattedDate = useMemo(() => format(date, 'yyyy-MM-dd'), [date]);
+  const [date, setDate] = useState<Date | null>(null);
+
+  // Set the initial date on the client-side to avoid hydration mismatch
+  useEffect(() => {
+    setDate(new Date());
+  }, []);
+
+  const formattedDate = useMemo(() => (date ? format(date, 'yyyy-MM-dd') : ''), [date]);
+
+  // Render a loading state or null until the date is set on the client
+  if (!date) {
+    return null;
+  }
 
   return (
     <DateContext.Provider value={{ date, setDate, formattedDate }}>

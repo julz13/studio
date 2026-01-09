@@ -58,6 +58,7 @@ export function Header({ setRecord }: HeaderProps) {
 
   const navItems = [
     { href: '/', label: 'Dashboard' },
+    { href: '/payments', label: 'Payments' },
     { href: '/reports', label: 'Reports' },
   ];
 

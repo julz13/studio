@@ -5,14 +5,12 @@ import { mockDailyRecord } from '@/lib/data';
 import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
 import { SummaryCards } from '@/components/summary-cards';
-import { PaymentsTable } from '@/components/payments-table';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIcon, Download, Edit, Save } from 'lucide-react';
+import { Calendar as CalendarIcon, Edit, Save } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
-import { unparse } from 'papaparse';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,6 +20,7 @@ import { signInAnonymously } from 'firebase/auth';
 import { useAuth } from '@/firebase';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { ExpensesChart } from './expenses-chart';
 
 export default function Dashboard() {
   const { user, loading: userLoading } = useUser();
@@ -160,48 +159,14 @@ export default function Dashboard() {
       description: "Your opening balances have been saved.",
     });
   };
-
-  const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
-    const newRecord = setter(localRecord);
-    setLocalRecord(newRecord);
-    updateRecord(newRecord);
-  };
-
-
-  const handleExport = () => {
-    if (!localRecord) return;
-    const csvData = localRecord.payments.map(p => ({
-      Date: localRecord.date,
-      Time: p.time,
-      Item: p.item,
-      Category: p.category,
-      Amount: p.amount,
-      'Payment Mode': p.paymentMode,
-      Notes: p.notes,
-    }));
-
-    const csv = unparse(csvData);
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `FinanceFlow_export_${localRecord.date}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
   
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
-      <Header setRecord={handleSetRecord} />
+      <Header />
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
         <div className="flex items-center gap-4">
           <div>
-            <h1 className="font-headline text-3xl font-semibold tracking-tight">Daily Dashboard</h1>
+            <h1 className="font-headline text-3xl font-semibold tracking-tight">Dashboard</h1>
             <p className="text-muted-foreground">Your financial summary for {date ? format(date, 'PPP') : 'the day'}.</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -222,20 +187,12 @@ export default function Dashboard() {
                 />
               </PopoverContent>
             </Popover>
-            <Button onClick={handleExport} disabled={!localRecord || localRecord.payments.length === 0}>
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
           </div>
         </div>
         <SummaryCards totals={localRecord.totals} currencyFormatter={currencyFormatter} />
         <div className="grid gap-4 md:gap-8 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <PaymentsTable
-              payments={localRecord.payments}
-              setRecord={handleSetRecord}
-              currencyFormatter={currencyFormatter}
-            />
+            <ExpensesChart payments={localRecord.payments} />
           </div>
           <div className="lg:col-span-1 flex flex-col gap-4">
             <Card>

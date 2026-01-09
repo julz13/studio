@@ -14,12 +14,7 @@ import {
 import { Calendar } from '@/components/ui/calendar';
 import { format, subDays } from 'date-fns';
 import { unparse } from 'papaparse';
-import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, getDoc, type DocumentReference } from 'firebase/firestore';
 import { mockDailyRecord } from '@/lib/data';
-import { useToast } from '@/hooks/use-toast';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   const cashSpent = updatedRecord.payments
@@ -58,18 +53,9 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
 
 export default function PaymentsPage() {
   const [date, setDate] = useState<Date | undefined>(new Date());
-  const { user, loading: userLoading } = useUser();
-  const firestore = useFirestore();
-  const { toast } = useToast();
   
-  const recordId = useMemo(() => (date ? format(date, 'yyyy-MM-dd') : ''), [date]);
-  
-  const recordRef = useMemoFirebase(() => {
-    if (!user?.uid || !recordId || !firestore) return undefined;
-    return doc(firestore, 'users', user.uid, 'records', recordId) as DocumentReference<DailyRecord>;
-  }, [firestore, user?.uid, recordId]);
-
-  const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef, { listen: true });
+  // Use local state with mock data, disabling all Firebase hooks.
+  const [record, setRecord] = useState<DailyRecord | null>(recalculateTotals(mockDailyRecord));
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -77,68 +63,13 @@ export default function PaymentsPage() {
     minimumFractionDigits: 0,
   });
 
-  useEffect(() => {
-    if (userLoading || recordLoading || !firestore || !user?.uid || !recordId || !recordRef) {
-      return;
-    }
-
-    if (!userLoading && record === null) {
-      const createNewDayRecord = async () => {
-        try {
-            const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
-            const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
-            const yesterdaySnap = await getDoc(yesterdayRef);
-
-            let newOpening = { account: 0, cash: 0 };
-            if (yesterdaySnap.exists()) {
-                const yesterdayData = yesterdaySnap.data() as DailyRecord;
-                newOpening = yesterdayData.balances.closing;
-            }
-            
-            const newRecordData = {
-                ...mockDailyRecord,
-                date: recordId,
-                balances: {
-                ...mockDailyRecord.balances,
-                opening: newOpening,
-                },
-            };
-            const calculatedRecord = recalculateTotals(newRecordData);
-            
-            setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
-                errorEmitter.emit('permission-error', new FirestorePermissionError({
-                    path: recordRef.path,
-                    operation: 'create',
-                    requestResourceData: calculatedRecord,
-                }));
-            });
-        } catch (error) {
-            console.error("Error creating new record:", error);
-            toast({
-                variant: "destructive",
-                title: "Error",
-                description: "Could not create a new daily record.",
-            });
-        }
-      };
-      createNewDayRecord();
-    }
-  }, [userLoading, recordLoading, record, firestore, user, recordId, recordRef, toast]);
-
-
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
-      if (!recordRef || !record) return;
+      if (!record) return;
       
       const newRecord = setter(record);
       const calculatedRecord = recalculateTotals(newRecord);
 
-      setDoc(recordRef, calculatedRecord, { merge: true }).catch(async (serverError) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: recordRef.path,
-          operation: 'update',
-          requestResourceData: calculatedRecord,
-        }));
-      });
+      setRecord(calculatedRecord);
     };
 
   const handleExport = () => {
@@ -171,7 +102,7 @@ export default function PaymentsPage() {
     }
   };
 
-  const isLoading = userLoading || recordLoading || record === undefined;
+  const isLoading = !record;
 
   if (isLoading) {
     return (
@@ -184,17 +115,6 @@ export default function PaymentsPage() {
     );
   }
   
-  if (record === null) {
-    return (
-     <div className="flex min-h-screen w-full flex-col bg-background">
-       <Header />
-       <main className="flex flex-1 items-center justify-center">
-         <p>Creating today's record...</p>
-       </main>
-     </div>
-   );
- }
-
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
       <Header setRecord={handleSetRecord} />

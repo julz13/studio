@@ -110,6 +110,7 @@ export default function Dashboard() {
           const yesterdaySnap = await getDoc(yesterdayRef);
           if (yesterdaySnap.exists()) {
             const yesterdayData = yesterdaySnap.data() as DailyRecord;
+            // Crucial fix: recalculate yesterday's data before using its closing balance
             const calculatedYesterday = recalculateTotals(yesterdayData);
             if (calculatedYesterday) {
                  opening = calculatedYesterday.balances.closing;

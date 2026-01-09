@@ -62,11 +62,12 @@ export default function RegisterPage() {
       );
       const user = userCredential.user;
 
-      await updateProfile(user, {
+      // Don't await these promises. Let them run in the background.
+      updateProfile(user, {
         displayName: data.displayName,
       });
 
-      await setDoc(doc(firestore, 'users', user.uid), {
+      setDoc(doc(firestore, 'users', user.uid), {
         uid: user.uid,
         email: user.email,
         displayName: data.displayName,
@@ -76,7 +77,10 @@ export default function RegisterPage() {
         title: 'Registration Successful',
         description: 'Your account has been created.',
       });
+
+      // Redirect immediately after successful creation.
       router.push('/');
+
     } catch (error: any) {
       console.error('Registration failed:', error);
       toast({
@@ -87,9 +91,9 @@ export default function RegisterPage() {
             ? 'This email is already registered.'
             : 'An unexpected error occurred.',
       });
-    } finally {
-      setLoading(false);
-    }
+       setLoading(false);
+    } 
+    // No finally block, loading is handled in success/error cases.
   };
 
   return (

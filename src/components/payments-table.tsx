@@ -18,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Banknote, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Banknote, Trash2, PlusCircle } from 'lucide-react';
 import type { DailyRecord, Payment } from '@/lib/types';
 import { AddPaymentForm } from './add-payment-form';
 import { AddWithdrawalForm } from './add-withdrawal-form';
@@ -118,7 +118,7 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
           </Sheet>
           <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetTrigger asChild>
-              <Button size="sm" className="gap-1 bg-accent text-accent-foreground hover:bg-accent/90">
+              <Button size="sm" className="gap-1 bg-accent text-accent-foreground hover:bg-accent/90 md:hidden">
                 <PlusCircle className="h-3.5 w-3.5" />
                 <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
                   Add Payment

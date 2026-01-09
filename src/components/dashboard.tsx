@@ -69,37 +69,34 @@ export default function Dashboard() {
             requestResourceData: updatedRecord
         });
         errorEmitter.emit('permission-error', permissionError);
-        toast({
-            variant: "destructive",
-            title: "Permission Error",
-            description: "Could not save changes to the database. Check your security rules.",
-        });
     });
-  }, [recordRef, toast]);
+  }, [recordRef]);
 
 
   useEffect(() => {
     const currentRecordId = date ? format(date, 'yyyy-MM-dd') : '';
-    // When the date changes, create a new default local record.
-    setLocalRecord({
-      ...mockDailyRecord,
-      date: currentRecordId,
-    });
     
-    // When firestore data loads, sync it to local state.
     if (record) { // record is a valid DailyRecord from firestore
       setLocalRecord(record);
     } else if (record === null) { // record is null, meaning doc doesn't exist
+      // If the doc doesn't exist, create a new local one and save it.
       const newRecord = {
         ...mockDailyRecord,
         date: currentRecordId,
+        // Carry over opening balances from the previous day's closing if available
       };
       setLocalRecord(newRecord);
       if(recordRef) {
         updateRecord(newRecord);
       }
+    } else if (!recordLoading && !record) {
+      // Not loading and no record yet, create a default local one
+      setLocalRecord({
+        ...mockDailyRecord,
+        date: currentRecordId,
+      });
     }
-  }, [date, record, recordRef, updateRecord]);
+  }, [date, record, recordRef, updateRecord, recordLoading]);
 
 
   useEffect(() => {
@@ -200,7 +197,7 @@ export default function Dashboard() {
   
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
-      <Header />
+      <Header setRecord={handleSetRecord} />
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
         <div className="flex items-center gap-4">
           <div>

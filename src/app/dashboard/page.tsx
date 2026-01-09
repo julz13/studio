@@ -83,13 +83,24 @@ export default function Dashboard() {
 
   // Effect to set initial record or create a new one
   useEffect(() => {
-    if (recordLoading || userLoading || !user) return;
+    if (userLoading) return;
+    if (recordLoading) {
+      // While loading, we can show a skeleton or loading state,
+      // but we should not perform any data logic.
+      // Setting record to null will show the main loading indicator.
+      setRecord(null);
+      return;
+    }
+    if (!user) return;
+
 
     const initializeRecord = async () => {
       if (recordData) {
+        // Data exists, set it
         setRecord(recalculateTotals(recordData));
       } else {
-        // No record for today, check yesterday for opening balances
+        // Data has loaded and it's confirmed null (doesn't exist).
+        // Create a new record for the day.
         const yesterday = subDays(date, 1);
         const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
         const yesterdayRef = doc(

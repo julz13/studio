@@ -70,13 +70,18 @@ export default function PaymentsPage() {
 
   // Effect to set initial record or create a new one
   useEffect(() => {
-    if (recordLoading || userLoading || !user) return;
+    if (userLoading) return;
+    if (recordLoading) {
+      setRecord(null);
+      return;
+    }
+    if (!user) return;
+
 
     const initializeRecord = async () => {
       if (recordData) {
         setRecord(recalculateTotals(recordData));
       } else {
-        // No record for today, check yesterday for opening balances
         const yesterday = subDays(date, 1);
         const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
         const yesterdayRef = doc(

@@ -15,7 +15,7 @@ type Options = {
 
 export function useDoc<T>(
   ref: DocumentReference | undefined,
-  options: Options = { listen: true },
+  options: Options = { listen: true }
 ) {
   // undefined: initial state, not yet loaded
   // null: document does not exist
@@ -67,7 +67,7 @@ export function useDoc<T>(
           errorEmitter.emit('permission-error', permissionError);
           setData(null);
           setLoading(false);
-        },
+        }
       );
     } else {
       getDocument();
@@ -78,7 +78,7 @@ export function useDoc<T>(
         unsubscribe();
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref, options.listen]);
 
   return { data, loading };

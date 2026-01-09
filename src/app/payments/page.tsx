@@ -14,7 +14,8 @@ import { useDoc } from '@/firebase/firestore/use-doc';
 import { useFirestore } from '@/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useDate } from '@/context/date-context';
-
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   const cashSpent = updatedRecord.payments
@@ -55,7 +56,7 @@ export default function PaymentsPage() {
   const { date, formattedDate } = useDate();
 
   const [record, setRecord] = useState<DailyRecord | null>(null);
-  
+
   const { user, loading: userLoading } = useUser();
   const firestore = useFirestore();
 
@@ -63,9 +64,10 @@ export default function PaymentsPage() {
     if (!user) return undefined;
     return doc(firestore, 'users', user.uid, 'records', formattedDate);
   }, [user, firestore, formattedDate]);
-  
-  const { data: recordData, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
-  
+
+  const { data: recordData, loading: recordLoading } =
+    useDoc<DailyRecord>(recordRef);
+
   // Effect to set initial record or create a new one
   useEffect(() => {
     if (recordLoading || userLoading || !user) return;
@@ -77,19 +79,25 @@ export default function PaymentsPage() {
         // No record for today, check yesterday for opening balances
         const yesterday = subDays(date, 1);
         const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
-        const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayStr);
-        
+        const yesterdayRef = doc(
+          firestore,
+          'users',
+          user.uid,
+          'records',
+          yesterdayStr
+        );
+
         let opening = { account: 0, cash: 0 };
         try {
           const yesterdaySnap = await getDoc(yesterdayRef);
           if (yesterdaySnap.exists()) {
-             const yesterdayData = yesterdaySnap.data() as DailyRecord;
-             opening = recalculateTotals(yesterdayData).balances.closing;
+            const yesterdayData = yesterdaySnap.data() as DailyRecord;
+            opening = recalculateTotals(yesterdayData).balances.closing;
           }
         } catch (e) {
           console.error("Could not fetch yesterday's record", e);
         }
-        
+
         const newRecord: DailyRecord = {
           ...mockDailyRecord,
           date: formattedDate,
@@ -100,15 +108,36 @@ export default function PaymentsPage() {
         };
 
         const calculatedRecord = recalculateTotals(newRecord);
+        const newRecordRef = doc(
+          firestore,
+          'users',
+          user.uid,
+          'records',
+          formattedDate
+        );
         // Save the newly created record for today
-        await setDoc(doc(firestore, 'users', user.uid, 'records', formattedDate), calculatedRecord);
+        setDoc(newRecordRef, calculatedRecord).catch((serverError) => {
+          const permissionError = new FirestorePermissionError({
+            path: newRecordRef.path,
+            operation: 'create',
+            requestResourceData: calculatedRecord,
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        });
         setRecord(calculatedRecord);
       }
     };
 
     initializeRecord();
-  }, [recordData, recordLoading, userLoading, user, date, firestore, formattedDate]);
-
+  }, [
+    recordData,
+    recordLoading,
+    userLoading,
+    user,
+    date,
+    firestore,
+    formattedDate,
+  ]);
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -118,17 +147,32 @@ export default function PaymentsPage() {
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
     if (!user) return;
-    
-    setRecord(prev => {
+
+    setRecord((prev) => {
       if (!prev) return null;
       const newRecord = setter(prev);
       const calculatedRecord = recalculateTotals(newRecord);
-      
-      const recordRef = doc(firestore, 'users', user.uid, 'records', calculatedRecord.date);
-      setDoc(recordRef, calculatedRecord, { merge: true });
+
+      const recordRef = doc(
+        firestore,
+        'users',
+        user.uid,
+        'records',
+        calculatedRecord.date
+      );
+      setDoc(recordRef, calculatedRecord, { merge: true }).catch(
+        (serverError) => {
+          const permissionError = new FirestorePermissionError({
+            path: recordRef.path,
+            operation: 'update',
+            requestResourceData: calculatedRecord,
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        }
+      );
 
       return calculatedRecord;
-    })
+    });
   };
 
   const handleExport = () => {
@@ -171,7 +215,7 @@ export default function PaymentsPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
       <Header setRecord={handleSetRecord} />

@@ -27,6 +27,8 @@ import { doc, setDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const registerSchema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters.'),
@@ -62,25 +64,34 @@ export default function RegisterPage() {
       );
       const user = userCredential.user;
 
-      // Don't await these promises. Let them run in the background.
-      updateProfile(user, {
-        displayName: data.displayName,
-      });
-
-      setDoc(doc(firestore, 'users', user.uid), {
-        uid: user.uid,
-        email: user.email,
-        displayName: data.displayName,
-      });
+      // Redirect immediately after successful creation.
+      router.push('/');
 
       toast({
         title: 'Registration Successful',
         description: 'Your account has been created.',
       });
 
-      // Redirect immediately after successful creation.
-      router.push('/');
+      // Don't await these promises. Let them run in the background.
+      updateProfile(user, {
+        displayName: data.displayName,
+      });
 
+      const userDocRef = doc(firestore, 'users', user.uid);
+      const userProfileData = {
+        uid: user.uid,
+        email: user.email,
+        displayName: data.displayName,
+      };
+
+      setDoc(userDocRef, userProfileData).catch((serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: userDocRef.path,
+          operation: 'create',
+          requestResourceData: userProfileData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
     } catch (error: any) {
       console.error('Registration failed:', error);
       toast({
@@ -91,8 +102,8 @@ export default function RegisterPage() {
             ? 'This email is already registered.'
             : 'An unexpected error occurred.',
       });
-       setLoading(false);
-    } 
+      setLoading(false);
+    }
     // No finally block, loading is handled in success/error cases.
   };
 
@@ -145,7 +156,11 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
+                      <Input
+                        type="password"
+                        placeholder="••••••••"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

@@ -21,7 +21,7 @@ type Options = {
 
 export function useCollection<T>(
   path: string,
-  options: Options = { listen: true },
+  options: Options = { listen: true }
 ) {
   const db = useFirestore();
   const [data, setData] = useState<T[] | null>(null);
@@ -43,13 +43,13 @@ export function useCollection<T>(
       try {
         const querySnapshot = await getDocs(q);
         const data = querySnapshot.docs.map(
-          (doc) => ({ id: doc.id, ...doc.data() }) as T,
+          (doc) => ({ id: doc.id, ...doc.data() }) as T
         );
         setData(data);
       } catch (e: any) {
         console.error(e);
-         const permissionError = new FirestorePermissionError({
-          path: q.path,
+        const permissionError = new FirestorePermissionError({
+          path: (q as any).path, // Re-casting to any due to internal type differences
           operation: 'list',
         });
         errorEmitter.emit('permission-error', permissionError);
@@ -65,7 +65,7 @@ export function useCollection<T>(
         q,
         (querySnapshot) => {
           const data = querySnapshot.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as T,
+            (doc) => ({ id: doc.id, ...doc.data() }) as T
           );
           setData(data);
           setLoading(false);
@@ -73,12 +73,12 @@ export function useCollection<T>(
         (error) => {
           console.error(error);
           const permissionError = new FirestorePermissionError({
-            path: q.path,
+            path: (q as any).path,
             operation: 'list',
           });
           errorEmitter.emit('permission-error', permissionError);
           setLoading(false);
-        },
+        }
       );
     } else {
       getDocuments();
@@ -89,7 +89,8 @@ export function useCollection<T>(
         unsubscribe();
       }
     };
-  }, [path, db, options.listen, options.query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, db, JSON.stringify(options.query), options.listen]);
 
   return { data, loading };
 }

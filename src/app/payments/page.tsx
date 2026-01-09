@@ -82,7 +82,7 @@ export default function PaymentsPage() {
       return;
     }
 
-    if (record === null) {
+    if (!userLoading && record === null) {
       const createNewDayRecord = async () => {
         try {
             const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
@@ -123,8 +123,7 @@ export default function PaymentsPage() {
       };
       createNewDayRecord();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userLoading, recordLoading, record, firestore, user?.uid, recordId, recordRef]);
+  }, [userLoading, recordLoading, record, firestore, user, recordId, recordRef, toast]);
 
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {

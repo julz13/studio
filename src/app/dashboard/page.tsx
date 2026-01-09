@@ -102,7 +102,8 @@ export default function Dashboard() {
       return;
     }
 
-    if (record === null) {
+    // Only attempt to create a record if the user is loaded and the record is confirmed to not exist (null).
+    if (!userLoading && record === null) {
       const createNewDayRecord = async () => {
         try {
             const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
@@ -147,8 +148,7 @@ export default function Dashboard() {
       setOpeningAccount(record.balances.opening.account);
       setOpeningCash(record.balances.opening.cash);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userLoading, recordLoading, record, firestore, user?.uid, recordId, recordRef]);
+  }, [userLoading, recordLoading, record, firestore, user, recordId, recordRef, toast]); // Added user and toast to dependency array
   
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
     if (!recordRef || !record) return;

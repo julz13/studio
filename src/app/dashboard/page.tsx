@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
 import { SummaryCards } from '@/components/summary-cards';
@@ -28,7 +28,6 @@ import { doc, setDoc, getDoc, type DocumentReference } from 'firebase/firestore'
 import { mockDailyRecord } from '@/lib/data';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   const cashSpent = updatedRecord.payments
@@ -71,11 +70,19 @@ export default function Dashboard() {
   const firestore = useFirestore();
   const { toast } = useToast();
 
-  const recordId = useMemo(() => (date ? format(date, 'yyyy-MM-dd') : ''), [date]);
-  
+  const recordId = useMemo(() => (date ? format(date, 'yyyy-MM-dd') : ''), [
+    date,
+  ]);
+
   const recordRef = useMemoFirebase(() => {
     if (!user?.uid || !recordId || !firestore) return undefined;
-    return doc(firestore, 'users', user.uid, 'records', recordId) as DocumentReference<DailyRecord>;
+    return doc(
+      firestore,
+      'users',
+      user.uid,
+      'records',
+      recordId
+    ) as DocumentReference<DailyRecord>;
   }, [firestore, user?.uid, recordId]);
 
   const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
@@ -91,7 +98,9 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    if (!recordLoading && !userLoading && record === null && recordRef && firestore && user?.uid && recordId) {
+    if (userLoading || recordLoading) return; // Wait for loading to finish
+    if (!record && firestore && user?.uid && recordId && recordRef) {
+      // If record is null and we are not loading, it means it doesn't exist.
       const createRecord = async () => {
         try {
           const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
@@ -114,7 +123,7 @@ export default function Dashboard() {
           };
           const calculatedRecord = recalculateTotals(newRecordData);
           
-          setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
+          await setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
              errorEmitter.emit('permission-error', new FirestorePermissionError({
                   path: recordRef.path,
                   operation: 'create',
@@ -131,33 +140,26 @@ export default function Dashboard() {
         }
       };
       createRecord();
-    }
-  }, [recordLoading, userLoading, record, recordRef, firestore, user?.uid, recordId, toast]);
-
-  
-  useEffect(() => {
-    if (record) {
+    } else if (record) {
       setOpeningAccount(record.balances.opening.account);
       setOpeningCash(record.balances.opening.cash);
     }
-  }, [record]);
+  }, [userLoading, recordLoading, record, firestore, user?.uid, recordId, recordRef, toast]);
+  
+  const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
+    if (!recordRef || !record) return;
+    
+    const newRecord = setter(record);
+    const calculatedRecord = recalculateTotals(newRecord);
 
-  const handleSetRecord = useCallback( (setter: (prev: DailyRecord) => DailyRecord) => {
-      if (!recordRef || !record) return;
-      
-      const newRecord = setter(record);
-      const calculatedRecord = recalculateTotals(newRecord);
-
-      setDoc(recordRef, calculatedRecord, { merge: true }).catch(async (serverError) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: recordRef.path,
-          operation: 'update',
-          requestResourceData: calculatedRecord,
-        }));
-      });
-    },
-    [record, recordRef]
-  );
+    setDoc(recordRef, calculatedRecord, { merge: true }).catch(async () => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: recordRef.path,
+        operation: 'update',
+        requestResourceData: calculatedRecord,
+      }));
+    });
+  };
   
   const handleSaveBalances = () => {
     if (!record) return;
@@ -180,9 +182,7 @@ export default function Dashboard() {
     });
   };
 
-  const isLoading = userLoading || recordLoading;
-
-  if (isLoading) {
+  if (userLoading || recordLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
@@ -193,7 +193,7 @@ export default function Dashboard() {
     );
   }
 
-  if (record === null) {
+  if (!record) {
      return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
@@ -236,7 +236,7 @@ export default function Dashboard() {
                   selected={date}
                   onSelect={setDate}
                   initialFocus
-                  disabled={(d) => d > new Date()}
+                  disabled={(d) => d > new Date() || d < subDays(new Date(), 30)}
                 />
               </PopoverContent>
             </Popover>

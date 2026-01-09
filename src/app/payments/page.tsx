@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
 import { PaymentsTable } from '@/components/payments-table';
@@ -78,7 +78,8 @@ export default function PaymentsPage() {
   });
 
   useEffect(() => {
-    if (!recordLoading && !userLoading && record === null && recordRef && firestore && user?.uid && recordId) {
+    if (userLoading || recordLoading) return;
+    if (!record && firestore && user?.uid && recordId && recordRef) {
       const createRecord = async () => {
         try {
           const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
@@ -101,7 +102,7 @@ export default function PaymentsPage() {
           };
           const calculatedRecord = recalculateTotals(newRecordData);
           
-          setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
+          await setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
               errorEmitter.emit('permission-error', new FirestorePermissionError({
                   path: recordRef.path,
                   operation: 'create',
@@ -119,10 +120,10 @@ export default function PaymentsPage() {
       };
       createRecord();
     }
-  }, [recordLoading, userLoading, record, recordRef, firestore, user?.uid, recordId, toast]);
+  }, [userLoading, recordLoading, record, firestore, user?.uid, recordId, recordRef, toast]);
 
 
-  const handleSetRecord = useCallback( (setter: (prev: DailyRecord) => DailyRecord) => {
+  const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
       if (!recordRef || !record) return;
       
       const newRecord = setter(record);
@@ -135,9 +136,7 @@ export default function PaymentsPage() {
           requestResourceData: calculatedRecord,
         }));
       });
-    },
-    [record, recordRef]
-  );
+    };
 
   const handleExport = () => {
     if (!record) return;
@@ -169,9 +168,7 @@ export default function PaymentsPage() {
     }
   };
 
-  const isLoading = userLoading || recordLoading;
-
-  if (isLoading) {
+  if (userLoading || recordLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
@@ -182,7 +179,7 @@ export default function PaymentsPage() {
     );
   }
   
-  if (record === null) {
+  if (!record) {
     return (
      <div className="flex min-h-screen w-full flex-col bg-background">
        <Header />
@@ -225,7 +222,7 @@ export default function PaymentsPage() {
                   selected={date}
                   onSelect={setDate}
                   initialFocus
-                  disabled={(d) => d > new Date()}
+                  disabled={(d) => d > new Date() || d < subDays(new Date(), 30)}
                 />
               </PopoverContent>
             </Popover>

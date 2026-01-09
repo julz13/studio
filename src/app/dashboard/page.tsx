@@ -120,11 +120,6 @@ export default function Dashboard() {
                   operation: 'create',
                   requestResourceData: calculatedRecord,
               }));
-               toast({
-                  variant: "destructive",
-                  title: "Error",
-                  description: "Could not create a new daily record.",
-              });
           });
         } catch (error) {
             console.error("Error creating new record:", error);
@@ -185,7 +180,7 @@ export default function Dashboard() {
     });
   };
 
-  const isLoading = userLoading || (recordLoading && record === undefined);
+  const isLoading = userLoading || recordLoading;
 
   if (isLoading) {
     return (
@@ -343,5 +338,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-    

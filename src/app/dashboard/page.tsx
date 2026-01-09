@@ -83,9 +83,12 @@ export default function Dashboard() {
   const [openingAccount, setOpeningAccount] = useState(0);
   const [openingCash, setOpeningCash] = useState(0);
   
-  const isLoading = userLoading || recordLoading;
+  const isLoading = userLoading || (record === undefined && recordLoading);
 
   useEffect(() => {
+    // This effect handles creating a new record if one doesn't exist for the selected date.
+    // It only runs *after* the initial loading is complete and we have a definitive answer
+    // on whether the record exists (record is null) or not.
     if (!isLoading && record === null && recordRef) {
       const newRecordData: DailyRecord = {
         ...mockDailyRecord,
@@ -100,7 +103,8 @@ export default function Dashboard() {
         errorEmitter.emit('permission-error', permissionError);
       });
     }
-  }, [record, isLoading, recordRef, formattedDate]);
+  }, [isLoading, record, recordRef, formattedDate]);
+
 
   useEffect(() => {
     if (record) {

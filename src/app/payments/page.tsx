@@ -76,9 +76,12 @@ export default function PaymentsPage() {
 
   const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
   
-  const isLoading = userLoading || recordLoading;
+  const isLoading = userLoading || (record === undefined && recordLoading);
 
   useEffect(() => {
+    // This effect handles creating a new record if one doesn't exist for the selected date.
+    // It only runs *after* the initial loading is complete and we have a definitive answer
+    // on whether the record exists (record is null) or not.
     if (!isLoading && record === null && recordRef) {
       const newRecordData: DailyRecord = {
         ...mockDailyRecord,
@@ -93,7 +96,7 @@ export default function PaymentsPage() {
         errorEmitter.emit('permission-error', permissionError);
       });
     }
-  }, [record, isLoading, recordRef, formattedDate]);
+  }, [isLoading, record, recordRef, formattedDate]);
 
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {

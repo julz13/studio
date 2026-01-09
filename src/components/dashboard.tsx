@@ -8,14 +8,13 @@ import { SummaryCards } from '@/components/summary-cards';
 import { PaymentsTable } from '@/components/payments-table';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIcon, Download, Copy, Share2, Edit, Save, Loader2 } from 'lucide-react';
+import { Calendar as CalendarIcon, Download, Edit, Save } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { unparse } from 'papaparse';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import Link from 'next/link';
 
 import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -48,8 +47,6 @@ export default function Dashboard() {
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
   const [openingCash, setOpeningCash] = useState(0);
-
-  const googleSheetUrl = "https://docs.google.com/spreadsheets/d/1DbFKdTARUxfqRHURdFaz-cnPavHCvONGm_cwTuWllNk/edit?gid=592434066#gid=592434066";
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -200,14 +197,6 @@ export default function Dashboard() {
       document.body.removeChild(link);
     }
   };
-
-  const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(googleSheetUrl);
-    toast({
-      title: "Copied to Clipboard",
-      description: "Google Sheet URL has been copied.",
-    });
-  }
   
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
@@ -307,26 +296,6 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground">Cash</p>
                     <p className="text-sm text-muted-foreground text-right">Cash</p>
                 </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-headline">Google Sheet</CardTitle>
-                <CardDescription>View and manage your data in Google Sheets.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-2">
-                    <Input readOnly value={googleSheetUrl} />
-                    <Button variant="outline" size="icon" onClick={handleCopyToClipboard}>
-                        <Copy className="h-4 w-4" />
-                    </Button>
-                </div>
-                <Button asChild className="w-full">
-                    <Link href={googleSheetUrl} target="_blank">
-                        <Share2 className="mr-2 h-4 w-4" />
-                        Open Google Sheet
-                    </Link>
-                </Button>
               </CardContent>
             </Card>
           </div>

@@ -53,33 +53,9 @@ export function AddWithdrawalForm({ setRecord, setSheetOpen }: AddWithdrawalForm
 
     setRecord((prevRecord) => {
       const updatedPayments = [...prevRecord.payments, newWithdrawal].sort((a, b) => a.time.localeCompare(b.time));
-      
-      const cashSpent = updatedPayments.filter(p => p.paymentMode === 'Cash').reduce((sum, p) => sum + p.amount, 0);
-      const accountSpent = updatedPayments.filter(p => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
-      const totalSpent = cashSpent + accountSpent;
-
-      const totalWithdrawals = updatedPayments
-        .filter(p => p.category === 'Withdrawal')
-        .reduce((sum, p) => sum + p.amount, 0);
-
-      const closingAccount = prevRecord.balances.opening.account - accountSpent - totalWithdrawals;
-      const closingCash = prevRecord.balances.opening.cash + totalWithdrawals - cashSpent;
-
       return {
         ...prevRecord,
         payments: updatedPayments,
-        totals: {
-          totalSpent,
-          cashSpent,
-          accountSpent,
-        },
-        balances: {
-          ...prevRecord.balances,
-          closing: {
-            account: closingAccount,
-            cash: closingCash,
-          },
-        },
       };
     });
 

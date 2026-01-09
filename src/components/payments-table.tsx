@@ -56,33 +56,9 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
   const handleDelete = (paymentId: string) => {
     setRecord((prev) => {
        const updatedPayments = prev.payments.filter((p) => p.id !== paymentId);
-       
-       const cashSpent = updatedPayments.filter(p => p.paymentMode === 'Cash').reduce((sum, p) => sum + p.amount, 0);
-       const accountSpent = updatedPayments.filter(p => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
-       const totalSpent = cashSpent + accountSpent;
- 
-       const totalWithdrawals = updatedPayments
-         .filter(p => p.category === 'Withdrawal')
-         .reduce((sum, p) => sum + p.amount, 0);
- 
-       const closingAccount = prev.balances.opening.account - accountSpent - totalWithdrawals;
-       const closingCash = prev.balances.opening.cash + totalWithdrawals - cashSpent;
- 
        return {
          ...prev,
          payments: updatedPayments,
-         totals: {
-           totalSpent,
-           cashSpent,
-           accountSpent,
-         },
-         balances: {
-           ...prev.balances,
-           closing: {
-             account: closingAccount,
-             cash: closingCash,
-           },
-         },
        };
     })
   }

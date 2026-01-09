@@ -12,6 +12,7 @@ import { Calendar as CalendarIcon, Download } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
+import { unparse } from 'papaparse';
 
 export default function Dashboard() {
   const [record, setRecord] = useState<DailyRecord>(mockDailyRecord);
@@ -27,6 +28,32 @@ export default function Dashboard() {
     currency: record.metadata.currency,
     minimumFractionDigits: 0,
   });
+
+  const handleExport = () => {
+    const csvData = record.payments.map(p => ({
+      Date: record.date,
+      Time: p.time,
+      Item: p.item,
+      Category: p.category,
+      Amount: p.amount,
+      'Payment Mode': p.paymentMode,
+      Notes: p.notes,
+    }));
+
+    const csv = unparse(csvData);
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `FinanceFlow_export_${record.date}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
   
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
@@ -54,7 +81,7 @@ export default function Dashboard() {
                 />
               </PopoverContent>
             </Popover>
-            <Button>
+            <Button onClick={handleExport}>
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>

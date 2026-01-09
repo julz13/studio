@@ -23,6 +23,13 @@ import { format, subDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { ExpensesChart } from '@/components/expenses-chart';
+import {
+  useUser,
+  useDoc,
+  useFirestore,
+  useMemoFirebase,
+} from '@/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 import { mockDailyRecord } from '@/lib/data';
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
@@ -63,14 +70,51 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
 export default function Dashboard() {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const { toast } = useToast();
+  const db = useFirestore();
+  const { user, loading: userLoading } = useUser();
 
-  // Use local state with mock data, disabling all Firebase hooks.
-  const [record, setRecord] = useState<DailyRecord | null>(recalculateTotals(mockDailyRecord));
+  const formattedDate = date ? format(date, 'yyyy-MM-dd') : '';
+
+  const recordRef = useMemoFirebase(() => {
+    if (!user || !formattedDate) return undefined;
+    return doc(db, 'users', user.uid, 'records', formattedDate);
+  }, [user, formattedDate, db]);
+  
+  const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
 
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
   const [openingCash, setOpeningCash] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreatingRecord, setIsCreatingRecord] = useState(false);
 
+
+  useEffect(() => {
+    setIsLoading(userLoading || recordLoading);
+  }, [userLoading, recordLoading]);
+
+  // Effect to create a new record if one doesn't exist for the selected date
+  useEffect(() => {
+    if (!isLoading && !record && recordRef && !isCreatingRecord) {
+      const createNewRecord = async () => {
+        setIsCreatingRecord(true);
+        const newRecordData: DailyRecord = {
+          ...mockDailyRecord,
+          date: formattedDate,
+        };
+        try {
+          await setDoc(recordRef, newRecordData);
+        } catch (error) {
+          console.error("Error creating new record:", error);
+        } finally {
+          setIsCreatingRecord(false);
+        }
+      };
+      createNewRecord();
+    }
+  }, [isLoading, record, recordRef, formattedDate, isCreatingRecord]);
+
+  
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
@@ -85,17 +129,22 @@ export default function Dashboard() {
   }, [record]);
   
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
-    if (!record) return;
+    if (!record || !recordRef) return;
     
     const newRecord = setter(record);
     const calculatedRecord = recalculateTotals(newRecord);
-
-    setRecord(calculatedRecord);
+    
+    setDoc(recordRef, calculatedRecord, { merge: true }).catch(error => {
+      console.error("Failed to save record:", error);
+      toast({
+        variant: "destructive",
+        title: "Error saving data",
+        description: "There was a problem saving your changes.",
+      });
+    });
   };
   
   const handleSaveBalances = () => {
-    if (!record) return;
-    
     handleSetRecord((prev) => ({
       ...prev,
       balances: {
@@ -114,14 +163,23 @@ export default function Dashboard() {
     });
   };
 
-  const isLoading = !record;
-
-  if (isLoading) {
+  if (isLoading || isCreatingRecord) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
         <main className="flex flex-1 items-center justify-center">
           <p>Loading your financial records...</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!record) {
+     return (
+      <div className="flex min-h-screen w-full flex-col bg-background">
+        <Header />
+        <main className="flex flex-1 items-center justify-center">
+          <p>Preparing today's record...</p>
         </main>
       </div>
     );

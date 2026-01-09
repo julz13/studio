@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, Menu, PlusCircle } from 'lucide-react';
+import { LogOut, Menu, PlusCircle, Calendar as CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -19,6 +19,15 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { useUser } from '@/firebase/auth/use-user';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { format, subDays } from 'date-fns';
+import { useDate } from '@/context/date-context';
+
 
 function Logo() {
   return (
@@ -53,6 +62,8 @@ export function Header({ setRecord }: HeaderProps) {
   const auth = useAuth();
   const router = useRouter();
   const { user } = useUser();
+  const { date, setDate } = useDate();
+
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -129,6 +140,29 @@ export function Header({ setRecord }: HeaderProps) {
             </SheetContent>
           </Sheet>
         )}
+
+        <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                id="date"
+                variant="outline"
+                className="w-[240px] justify-start text-left font-normal"
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {date ? format(date, 'PPP') : <span>Pick a date</span>}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="single"
+                selected={date}
+                onSelect={(d) => setDate(d || new Date())}
+                initialFocus
+                disabled={(d) => d > new Date() || d < subDays(new Date(), 30)}
+              />
+            </PopoverContent>
+          </Popover>
+
         {user && <span className="text-sm font-medium text-muted-foreground">{user.displayName}</span>}
         <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Logout">
           <LogOut className="h-5 w-5" />

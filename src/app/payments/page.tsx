@@ -5,13 +5,7 @@ import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
 import { PaymentsTable } from '@/components/payments-table';
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIcon, Download } from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
+import { Download } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { unparse } from 'papaparse';
 import { mockDailyRecord } from '@/lib/data';
@@ -19,6 +13,7 @@ import { useUser } from '@/firebase/auth/use-user';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useFirestore } from '@/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { useDate } from '@/context/date-context';
 
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
@@ -57,8 +52,7 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
 };
 
 export default function PaymentsPage() {
-  const [date, setDate] = useState<Date>(new Date());
-  const formattedDate = useMemo(() => format(date, 'yyyy-MM-dd'), [date]);
+  const { date, formattedDate } = useDate();
 
   const [record, setRecord] = useState<DailyRecord | null>(null);
   
@@ -89,7 +83,8 @@ export default function PaymentsPage() {
         try {
           const yesterdaySnap = await getDoc(yesterdayRef);
           if (yesterdaySnap.exists()) {
-            opening = yesterdaySnap.data().balances.closing;
+             const yesterdayData = yesterdaySnap.data() as DailyRecord;
+             opening = recalculateTotals(yesterdayData).balances.closing;
           }
         } catch (e) {
           console.error("Could not fetch yesterday's record", e);
@@ -192,27 +187,6 @@ export default function PaymentsPage() {
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  id="date"
-                  variant="outline"
-                  className="w-[240px] justify-start text-left font-normal"
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date ? format(date, 'PPP') : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={(d) => setDate(d || new Date())}
-                  initialFocus
-                  disabled={(d) => d > new Date() || d < subDays(new Date(), 30)}
-                />
-              </PopoverContent>
-            </Popover>
             <Button
               onClick={handleExport}
               disabled={!record || record.payments.length === 0}

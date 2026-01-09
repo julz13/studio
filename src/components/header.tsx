@@ -97,7 +97,7 @@ export function Header({ setRecord }: HeaderProps) {
         </SheetContent>
       </Sheet>
       <div className="flex w-full items-center justify-end gap-4 md:ml-auto md:gap-2 lg:gap-4">
-        {setRecord && (
+        {setRecord && pathname === '/payments' && (
            <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetTrigger asChild>
               <Button size="sm" className="gap-1">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
 import { SummaryCards } from '@/components/summary-cards';
@@ -34,12 +34,36 @@ const loadRecordFromLocalStorage = (date: string): DailyRecord => {
   const key = getLocalStorageKey(date);
   const storedData = localStorage.getItem(key);
   if (storedData) {
-    return JSON.parse(storedData);
+    try {
+      // Ensure closing balances are calculated if not present
+      const parsed = JSON.parse(storedData);
+      if (!parsed.balances.closing) {
+        return recalculateTotals(parsed);
+      }
+      return parsed;
+    } catch (e) {
+      console.error("Failed to parse localStorage data", e);
+    }
   }
-  // If no record for the date, create a new one
+  // If no record for the date, or parsing failed, create a new one for yesterday
   const newRecord = { ...mockDailyRecord, date };
-  localStorage.setItem(key, JSON.stringify(newRecord));
-  return newRecord;
+  // Check if yesterday's data exists to carry over closing balance
+  const yesterday = format(subDays(new Date(date), 1), 'yyyy-MM-dd');
+  const yesterdayKey = getLocalStorageKey(yesterday);
+  const yesterdayData = localStorage.getItem(yesterdayKey);
+  if (yesterdayData) {
+    try {
+      const yesterdayRecord = JSON.parse(yesterdayData);
+      const calculatedYesterday = recalculateTotals(yesterdayRecord);
+      newRecord.balances.opening.account = calculatedYesterday.balances.closing.account;
+      newRecord.balances.opening.cash = calculatedYesterday.balances.closing.cash;
+    } catch(e) {
+        console.error("Failed to parse yesterday's data", e);
+    }
+  }
+  const calculatedRecord = recalculateTotals(newRecord);
+  localStorage.setItem(key, JSON.stringify(calculatedRecord));
+  return calculatedRecord;
 };
 
 const saveRecordToLocalStorage = (record: DailyRecord) => {
@@ -119,10 +143,12 @@ export default function Dashboard() {
   });
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
-    const newRecord = setter(record);
-    const calculatedRecord = recalculateTotals(newRecord);
-    setRecord(calculatedRecord);
-    saveRecordToLocalStorage(calculatedRecord);
+    setRecord(prev => {
+        const newRecord = setter(prev);
+        const calculatedRecord = recalculateTotals(newRecord);
+        saveRecordToLocalStorage(calculatedRecord);
+        return calculatedRecord;
+    })
   };
 
   const handleSaveBalances = () => {
@@ -157,7 +183,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
-      <Header setRecord={handleSetRecord} />
+      <Header />
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
         <div className="flex items-center gap-4">
           <div>

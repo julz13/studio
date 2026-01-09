@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
 import { PaymentsTable } from '@/components/payments-table';
@@ -14,17 +14,31 @@ import {
 import { Calendar } from '@/components/ui/calendar';
 import { format, subDays } from 'date-fns';
 import { unparse } from 'papaparse';
-import {
-  useUser,
-  useDoc,
-  useFirestore,
-  useMemoFirebase,
-} from '@/firebase';
-import { doc, setDoc } from 'firebase/firestore';
-import { useToast } from '@/hooks/use-toast';
 import { mockDailyRecord } from '@/lib/data';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
+
+const getLocalStorageKey = (date: string) => `finance-record-${date}`;
+
+const loadRecordFromLocalStorage = (date: string): DailyRecord => {
+  if (typeof window === 'undefined') {
+    return { ...mockDailyRecord, date };
+  }
+  const key = getLocalStorageKey(date);
+  const storedData = localStorage.getItem(key);
+  if (storedData) {
+    return JSON.parse(storedData);
+  }
+  // If no record for the date, create a new one
+  const newRecord = { ...mockDailyRecord, date };
+  localStorage.setItem(key, JSON.stringify(newRecord));
+  return newRecord;
+};
+
+const saveRecordToLocalStorage = (record: DailyRecord) => {
+  if (typeof window === 'undefined') return;
+  const key = getLocalStorageKey(record.date);
+  localStorage.setItem(key, JSON.stringify(record));
+};
+
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   const cashSpent = updatedRecord.payments
@@ -63,41 +77,18 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
 
 export default function PaymentsPage() {
   const [date, setDate] = useState<Date | undefined>(new Date());
-  const { toast } = useToast();
-  const db = useFirestore();
-  const { user, loading: userLoading } = useUser();
+  const formattedDate = date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
 
-  const formattedDate = date ? format(date, 'yyyy-MM-dd') : '';
+  const [record, setRecord] = useState<DailyRecord>(() => loadRecordFromLocalStorage(formattedDate));
+  const [isLoading, setIsLoading] = useState(true);
 
-  const recordRef = useMemoFirebase(() => {
-    if (!user || !formattedDate || !db) return undefined;
-    return doc(db, 'users', user.uid, 'records', formattedDate);
-  }, [user, formattedDate, db]);
-
-  const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
-  
-  const isLoading = userLoading || (record === undefined && recordLoading);
-
+  // Effect to load data when date changes
   useEffect(() => {
-    // This effect handles creating a new record if one doesn't exist for the selected date.
-    // It only runs *after* the initial loading is complete and we have a definitive answer
-    // on whether the record exists (record is null) or not.
-    if (!isLoading && record === null && recordRef) {
-      const newRecordData: DailyRecord = {
-        ...mockDailyRecord,
-        date: formattedDate,
-      };
-      setDoc(recordRef, newRecordData, { merge: true }).catch((serverError) => {
-        const permissionError = new FirestorePermissionError({
-          path: recordRef.path,
-          operation: 'create',
-          requestResourceData: newRecordData,
-        });
-        errorEmitter.emit('permission-error', permissionError);
-      });
-    }
-  }, [isLoading, record, recordRef, formattedDate]);
-
+    setIsLoading(true);
+    const newRecord = loadRecordFromLocalStorage(formattedDate);
+    setRecord(newRecord);
+    setIsLoading(false);
+  }, [formattedDate]);
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -106,24 +97,10 @@ export default function PaymentsPage() {
   });
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
-    if (!record || !recordRef) return;
-    
     const newRecord = setter(record);
     const calculatedRecord = recalculateTotals(newRecord);
-
-    setDoc(recordRef, calculatedRecord, { merge: true }).catch((serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: recordRef.path,
-        operation: 'update',
-        requestResourceData: calculatedRecord,
-      });
-      errorEmitter.emit('permission-error', permissionError);
-      toast({
-        variant: "destructive",
-        title: "Error saving data",
-        description: "There was a problem saving your changes.",
-      });
-    });
+    setRecord(calculatedRecord);
+    saveRecordToLocalStorage(calculatedRecord);
   };
 
   const handleExport = () => {

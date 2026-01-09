@@ -69,7 +69,7 @@ export default function PaymentsPage() {
     return doc(firestore, 'users', user.uid, 'records', recordId) as DocumentReference<DailyRecord>;
   }, [firestore, user?.uid, recordId]);
 
-  const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
+  const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef, { listen: true });
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -78,47 +78,51 @@ export default function PaymentsPage() {
   });
 
   useEffect(() => {
-    if (userLoading || recordLoading) return;
-    if (!record && firestore && user?.uid && recordId && recordRef) {
-      const createRecord = async () => {
-        try {
-          const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
-          const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
-          const yesterdaySnap = await getDoc(yesterdayRef);
+     const createNewDayRecord = async () => {
+        if (!firestore || !user?.uid || !recordId || !recordRef) return;
 
-          let newOpening = { account: 0, cash: 0 };
-          if (yesterdaySnap.exists()) {
-            const yesterdayData = yesterdaySnap.data() as DailyRecord;
-            newOpening = yesterdayData.balances.closing;
-          }
-          
-          const newRecordData = {
-            ...mockDailyRecord,
-            date: recordId,
-            balances: {
-              ...mockDailyRecord.balances,
-              opening: newOpening,
-            },
-          };
-          const calculatedRecord = recalculateTotals(newRecordData);
-          
-          await setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
-              errorEmitter.emit('permission-error', new FirestorePermissionError({
-                  path: recordRef.path,
-                  operation: 'create',
-                  requestResourceData: calculatedRecord,
-              }));
-          });
+        try {
+            const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
+            const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
+            const yesterdaySnap = await getDoc(yesterdayRef);
+
+            let newOpening = { account: 0, cash: 0 };
+            if (yesterdaySnap.exists()) {
+                const yesterdayData = yesterdaySnap.data() as DailyRecord;
+                newOpening = yesterdayData.balances.closing;
+            }
+            
+            const newRecordData = {
+                ...mockDailyRecord,
+                date: recordId,
+                balances: {
+                ...mockDailyRecord.balances,
+                opening: newOpening,
+                },
+            };
+            const calculatedRecord = recalculateTotals(newRecordData);
+            
+            await setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
+                errorEmitter.emit('permission-error', new FirestorePermissionError({
+                    path: recordRef.path,
+                    operation: 'create',
+                    requestResourceData: calculatedRecord,
+                }));
+            });
         } catch (error) {
             console.error("Error creating new record:", error);
             toast({
-              variant: "destructive",
-              title: "Error",
-              description: "Could not create a new daily record.",
+                variant: "destructive",
+                title: "Error",
+                description: "Could not create a new daily record.",
             });
         }
-      };
-      createRecord();
+    };
+    
+    if (!userLoading && !recordLoading) {
+      if (record === null) {
+        createNewDayRecord();
+      }
     }
   }, [userLoading, recordLoading, record, firestore, user?.uid, recordId, recordRef, toast]);
 
@@ -168,7 +172,9 @@ export default function PaymentsPage() {
     }
   };
 
-  if (userLoading || recordLoading) {
+  const isLoading = userLoading || recordLoading || record === undefined;
+
+  if (isLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
@@ -179,7 +185,7 @@ export default function PaymentsPage() {
     );
   }
   
-  if (!record) {
+  if (record === null) {
     return (
      <div className="flex min-h-screen w-full flex-col bg-background">
        <Header />

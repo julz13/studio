@@ -85,7 +85,7 @@ export default function Dashboard() {
     ) as DocumentReference<DailyRecord>;
   }, [firestore, user?.uid, recordId]);
 
-  const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
+  const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef, { listen: true });
 
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
@@ -98,51 +98,57 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    if (userLoading || recordLoading) return; // Wait for loading to finish
-    if (!record && firestore && user?.uid && recordId && recordRef) {
-      // If record is null and we are not loading, it means it doesn't exist.
-      const createRecord = async () => {
-        try {
-          const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
-          const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
-          const yesterdaySnap = await getDoc(yesterdayRef);
+    const createNewDayRecord = async () => {
+        if (!firestore || !user?.uid || !recordId || !recordRef) return;
 
-          let newOpening = { account: 0, cash: 0 };
-          if (yesterdaySnap.exists()) {
-            const yesterdayData = yesterdaySnap.data() as DailyRecord;
-            newOpening = yesterdayData.balances.closing;
-          }
-          
-          const newRecordData = {
-            ...mockDailyRecord,
-            date: recordId,
-            balances: {
-              ...mockDailyRecord.balances,
-              opening: newOpening,
-            },
-          };
-          const calculatedRecord = recalculateTotals(newRecordData);
-          
-          await setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
-             errorEmitter.emit('permission-error', new FirestorePermissionError({
-                  path: recordRef.path,
-                  operation: 'create',
-                  requestResourceData: calculatedRecord,
-              }));
-          });
+        try {
+            const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
+            const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
+            const yesterdaySnap = await getDoc(yesterdayRef);
+
+            let newOpening = { account: 0, cash: 0 };
+            if (yesterdaySnap.exists()) {
+                const yesterdayData = yesterdaySnap.data() as DailyRecord;
+                newOpening = yesterdayData.balances.closing;
+            }
+            
+            const newRecordData = {
+                ...mockDailyRecord,
+                date: recordId,
+                balances: {
+                ...mockDailyRecord.balances,
+                opening: newOpening,
+                },
+            };
+            const calculatedRecord = recalculateTotals(newRecordData);
+            
+            await setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
+                errorEmitter.emit('permission-error', new FirestorePermissionError({
+                    path: recordRef.path,
+                    operation: 'create',
+                    requestResourceData: calculatedRecord,
+                }));
+            });
         } catch (error) {
             console.error("Error creating new record:", error);
             toast({
-              variant: "destructive",
-              title: "Error",
-              description: "Could not create a new daily record.",
+                variant: "destructive",
+                title: "Error",
+                description: "Could not create a new daily record.",
             });
         }
-      };
-      createRecord();
-    } else if (record) {
-      setOpeningAccount(record.balances.opening.account);
-      setOpeningCash(record.balances.opening.cash);
+    };
+    
+    // This effect runs when user/record loading is done
+    if (!userLoading && !recordLoading) {
+      // If the record is null, it means it doesn't exist for the selected date.
+      if (record === null) {
+        createNewDayRecord();
+      } else if (record) {
+        // If the record exists, update the local state for editing.
+        setOpeningAccount(record.balances.opening.account);
+        setOpeningCash(record.balances.opening.cash);
+      }
     }
   }, [userLoading, recordLoading, record, firestore, user?.uid, recordId, recordRef, toast]);
   
@@ -182,7 +188,9 @@ export default function Dashboard() {
     });
   };
 
-  if (userLoading || recordLoading) {
+  const isLoading = userLoading || recordLoading || record === undefined;
+
+  if (isLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
@@ -193,7 +201,7 @@ export default function Dashboard() {
     );
   }
 
-  if (!record) {
+  if (record === null) {
      return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />

@@ -74,7 +74,7 @@ export default function Dashboard() {
   const recordId = useMemo(() => (date ? format(date, 'yyyy-MM-dd') : ''), [date]);
   
   const recordRef = useMemoFirebase(() => {
-    if (!user?.uid || !recordId) return undefined;
+    if (!user?.uid || !recordId || !firestore) return undefined;
     return doc(firestore, 'users', user.uid, 'records', recordId) as DocumentReference<DailyRecord>;
   }, [firestore, user?.uid, recordId]);
 
@@ -98,48 +98,49 @@ export default function Dashboard() {
   }, [record]);
 
   useEffect(() => {
-    if (record === null && !recordLoading && user?.uid && recordId && recordRef) {
-      const createNewRecord = async () => {
-        try {
-          const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
-          const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
-          const yesterdaySnap = await getDoc(yesterdayRef);
+    const createNewRecordIfNeeded = async () => {
+        if (record === null && !recordLoading && user?.uid && recordId && recordRef && firestore) {
+            try {
+                const yesterdayId = format(subDays(new Date(recordId), 1), 'yyyy-MM-dd');
+                const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayId);
+                const yesterdaySnap = await getDoc(yesterdayRef);
 
-          let newOpening = { account: 0, cash: 0 };
-          if (yesterdaySnap.exists()) {
-            const yesterdayData = yesterdaySnap.data() as DailyRecord;
-            newOpening = yesterdayData.balances.closing;
-          }
-          
-          const newRecordData = {
-            ...mockDailyRecord,
-            date: recordId,
-            balances: {
-              ...mockDailyRecord.balances,
-              opening: newOpening,
-            },
-          };
-          const calculatedRecord = recalculateTotals(newRecordData);
-          
-          await setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
-             errorEmitter.emit('permission-error', new FirestorePermissionError({
-                path: recordRef.path,
-                operation: 'create',
-                requestResourceData: calculatedRecord,
-             }));
-          });
-        } catch (error) {
-          console.error("Error creating new record:", error);
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Could not create a new daily record.",
-          });
+                let newOpening = { account: 0, cash: 0 };
+                if (yesterdaySnap.exists()) {
+                    const yesterdayData = yesterdaySnap.data() as DailyRecord;
+                    newOpening = yesterdayData.balances.closing;
+                }
+                
+                const newRecordData = {
+                    ...mockDailyRecord,
+                    date: recordId,
+                    balances: {
+                        ...mockDailyRecord.balances,
+                        opening: newOpening,
+                    },
+                };
+                const calculatedRecord = recalculateTotals(newRecordData);
+                
+                // By not awaiting, we let the useDoc listener update the UI.
+                setDoc(recordRef, calculatedRecord).catch(async (serverError) => {
+                    errorEmitter.emit('permission-error', new FirestorePermissionError({
+                        path: recordRef.path,
+                        operation: 'create',
+                        requestResourceData: calculatedRecord,
+                    }));
+                });
+            } catch (error) {
+                console.error("Error creating new record:", error);
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Could not create a new daily record.",
+                });
+            }
         }
-      };
-      createNewRecord();
-    }
-  }, [record, recordLoading, user?.uid, recordId, firestore, recordRef, toast]);
+    };
+    createNewRecordIfNeeded();
+}, [record, recordLoading, user?.uid, recordId, firestore, recordRef, toast]);
 
 
   const handleSetRecord = useCallback( (setter: (prev: DailyRecord) => DailyRecord) => {
@@ -180,9 +181,9 @@ export default function Dashboard() {
     });
   };
 
-  const isLoading = userLoading || recordLoading;
+  const isLoading = userLoading || (recordLoading && record === undefined);
 
-  if (isLoading && record === undefined) {
+  if (isLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
@@ -193,7 +194,7 @@ export default function Dashboard() {
     );
   }
 
-  if (!record) {
+  if (record === null) {
      return (
         <div className="flex min-h-screen w-full flex-col bg-background">
              <Header />

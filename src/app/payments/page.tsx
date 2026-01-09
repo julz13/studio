@@ -23,6 +23,8 @@ import {
 import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { mockDailyRecord } from '@/lib/data';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
   const cashSpent = updatedRecord.payments
@@ -73,20 +75,22 @@ export default function PaymentsPage() {
   }, [user, formattedDate, db]);
 
   const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef);
-
+  
   const isLoading = userLoading || recordLoading;
 
-  // Effect to create a new record if one doesn't exist for the selected date
   useEffect(() => {
-    // Only run if there's no record, we are not loading, and the reference is valid
-    if (record === null && !isLoading && recordRef) {
+    if (!isLoading && record === null && recordRef) {
       const newRecordData: DailyRecord = {
         ...mockDailyRecord,
         date: formattedDate,
       };
-      // Use setDoc, but don't await it in useEffect to avoid race conditions
-      setDoc(recordRef, newRecordData).catch(error => {
-         console.error("Error creating new record:", error);
+      setDoc(recordRef, newRecordData, { merge: true }).catch((serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: recordRef.path,
+          operation: 'create',
+          requestResourceData: newRecordData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
       });
     }
   }, [record, isLoading, recordRef, formattedDate]);
@@ -104,8 +108,13 @@ export default function PaymentsPage() {
     const newRecord = setter(record);
     const calculatedRecord = recalculateTotals(newRecord);
 
-    setDoc(recordRef, calculatedRecord, { merge: true }).catch(error => {
-      console.error("Failed to save record:", error);
+    setDoc(recordRef, calculatedRecord, { merge: true }).catch((serverError) => {
+      const permissionError = new FirestorePermissionError({
+        path: recordRef.path,
+        operation: 'update',
+        requestResourceData: calculatedRecord,
+      });
+      errorEmitter.emit('permission-error', permissionError);
       toast({
         variant: "destructive",
         title: "Error saving data",
@@ -144,24 +153,12 @@ export default function PaymentsPage() {
     }
   };
 
-  if (isLoading || record === undefined) {
+  if (isLoading || !record) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
         <main className="flex flex-1 items-center justify-center">
           <p>Loading your financial records...</p>
-        </main>
-      </div>
-    );
-  }
-
-  // Record is null, which means it doesn't exist yet and is being created
-  if (record === null) {
-     return (
-      <div className="flex min-h-screen w-full flex-col bg-background">
-        <Header />
-        <main className="flex flex-1 items-center justify-center">
-          <p>Preparing today's record...</p>
         </main>
       </div>
     );

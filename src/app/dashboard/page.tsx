@@ -10,33 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Calendar as CalendarIcon, Edit, Save } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-
-import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth';
-import { useAuth } from '@/firebase';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
-import { ExpensesChart } from './expenses-chart';
+import { ExpensesChart } from '@/components/expenses-chart';
 
 export default function Dashboard() {
-  const { user, loading: userLoading } = useUser();
-  const auth = useAuth();
-  const firestore = useFirestore();
   const [date, setDate] = useState<Date | undefined>(new Date());
-  
-  const recordId = date ? format(date, 'yyyy-MM-dd') : '';
-  
-  const recordRef = useMemoFirebase(() => {
-    if (!firestore || !user?.uid || !recordId) return undefined;
-    return doc(firestore, `/users/${user.uid}/records/${recordId}`);
-  }, [firestore, user?.uid, recordId]);
-
-  const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef, { listen: true });
-
   const [localRecord, setLocalRecord] = useState<DailyRecord | null>(null);
 
   const { toast } = useToast();
@@ -50,56 +30,12 @@ export default function Dashboard() {
     minimumFractionDigits: 0,
   });
 
-   useEffect(() => {
-    if (!user && !userLoading) {
-      signInAnonymously(auth);
-    }
-  }, [user, userLoading, auth]);
-
-  const updateRecord = useCallback((updatedRecord: DailyRecord) => {
-    if (!recordRef) return;
-    setDoc(recordRef, updatedRecord, { merge: true }).catch(async (serverError) => {
-        const permissionError = new FirestorePermissionError({
-            path: recordRef.path,
-            operation: 'write',
-            requestResourceData: updatedRecord
-        });
-        errorEmitter.emit('permission-error', permissionError);
-    });
-  }, [recordRef]);
-
   useEffect(() => {
-    if (recordLoading || !date || !user?.uid) {
-      // While loading or if prerequisites aren't met, do nothing.
-      return;
-    }
-
-    if (record) {
-      // If a record is found in Firestore, use it.
-      setLocalRecord(record);
-    } else if (record === null) {
-      // If useDoc confirms the record does not exist (record is null)
-      const yesterdayId = format(subDays(date, 1), 'yyyy-MM-dd');
-      const yesterdayRef = doc(firestore, `/users/${user.uid}/records/${yesterdayId}`);
-      
-      getDoc(yesterdayRef).then(docSnap => {
-        // Start with a fresh mock record for the current date.
-        const newRecord = { ...mockDailyRecord, date: recordId };
-        
-        // If yesterday's record exists, carry over the closing balance.
-        if (docSnap.exists()) {
-          const yesterdayRecord = docSnap.data() as DailyRecord;
-          newRecord.balances.opening.account = yesterdayRecord.balances.closing.account;
-          newRecord.balances.opening.cash = yesterdayRecord.balances.closing.cash;
-        }
-        
-        // Set the local state immediately to unblock the UI.
-        setLocalRecord(newRecord);
-        // Save the newly created record to Firestore.
-        updateRecord(newRecord);
-      });
-    }
-  }, [date, record, recordLoading, user?.uid, firestore, recordId, updateRecord]);
+    // Simulate fetching data
+    const recordId = date ? format(date, 'yyyy-MM-dd') : '';
+    const newRecord = { ...mockDailyRecord, date: recordId };
+    setLocalRecord(newRecord);
+  }, [date]);
 
 
   useEffect(() => {
@@ -113,10 +49,11 @@ export default function Dashboard() {
     setLocalRecord(prev => {
         if (!prev) return null;
         const newRecord = setter(prev);
-        updateRecord(newRecord);
+        // Here you would normally save to a database
+        console.log("Record updated (local state):", newRecord);
         return newRecord;
     });
-  }, [updateRecord]);
+  }, []);
 
 
   const recalculateTotals = useCallback((updatedRecord: DailyRecord): DailyRecord => {
@@ -164,7 +101,6 @@ export default function Dashboard() {
     const fullyRecalculatedRecord = recalculateTotals(updatedRecordWithNewOpening);
     
     setLocalRecord(fullyRecalculatedRecord);
-    updateRecord(fullyRecalculatedRecord);
 
     setIsEditingBalances(false);
     toast({
@@ -282,5 +218,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-    

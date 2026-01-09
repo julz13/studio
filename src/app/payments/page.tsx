@@ -9,35 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Calendar as CalendarIcon, Download } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { unparse } from 'papaparse';
-import { useToast } from '@/hooks/use-toast';
-
-import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth';
-import { useAuth } from '@/firebase';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function PaymentsPage() {
-  const { user, loading: userLoading } = useUser();
-  const auth = useAuth();
-  const firestore = useFirestore();
   const [date, setDate] = useState<Date | undefined>(new Date());
-  
-  const recordId = date ? format(date, 'yyyy-MM-dd') : '';
-  
-  const recordRef = useMemoFirebase(() => {
-    if (!firestore || !user?.uid || !recordId) return undefined;
-    return doc(firestore, `/users/${user.uid}/records/${recordId}`);
-  }, [firestore, user?.uid, recordId]);
-
-  const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef, { listen: true });
-
   const [localRecord, setLocalRecord] = useState<DailyRecord | null>(null);
-
-  const { toast } = useToast();
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -45,56 +22,21 @@ export default function PaymentsPage() {
     minimumFractionDigits: 0,
   });
 
-   useEffect(() => {
-    if (!user && !userLoading) {
-      signInAnonymously(auth);
-    }
-  }, [user, userLoading, auth]);
-
-  const updateRecord = useCallback((updatedRecord: DailyRecord) => {
-    if (!recordRef) return;
-    setDoc(recordRef, updatedRecord, { merge: true }).catch(async (serverError) => {
-        const permissionError = new FirestorePermissionError({
-            path: recordRef.path,
-            operation: 'write',
-            requestResourceData: updatedRecord
-        });
-        errorEmitter.emit('permission-error', permissionError);
-    });
-  }, [recordRef]);
-
   useEffect(() => {
-    if (recordLoading || !date || !user?.uid) {
-      return;
-    }
-  
-    if (record) {
-      setLocalRecord(record);
-    } else if (record === null) {
-      const yesterdayId = format(subDays(date, 1), 'yyyy-MM-dd');
-      const yesterdayRef = doc(firestore, `/users/${user.uid}/records/${yesterdayId}`);
-      
-      getDoc(yesterdayRef).then(docSnap => {
-        const newRecord = { ...mockDailyRecord, date: recordId };
-        if (docSnap.exists()) {
-          const yesterdayRecord = docSnap.data() as DailyRecord;
-          newRecord.balances.opening.account = yesterdayRecord.balances.closing.account;
-          newRecord.balances.opening.cash = yesterdayRecord.balances.closing.cash;
-        }
-        setLocalRecord(newRecord);
-        updateRecord(newRecord);
-      });
-    }
-  }, [date, record, recordLoading, user?.uid, firestore, recordId, updateRecord]);
+    // Simulate fetching data
+    const recordId = date ? format(date, 'yyyy-MM-dd') : '';
+    const newRecord = { ...mockDailyRecord, date: recordId };
+    setLocalRecord(newRecord);
+  }, [date]);
   
   const handleSetRecord = useCallback((setter: (prev: DailyRecord) => DailyRecord) => {
     setLocalRecord(prev => {
         if (!prev) return null;
         const newRecord = setter(prev);
-        updateRecord(newRecord);
+        console.log("Record updated (local state):", newRecord);
         return newRecord;
     });
-  }, [updateRecord]);
+  }, []);
 
 
   const handleExport = () => {
@@ -177,5 +119,3 @@ export default function PaymentsPage() {
     </div>
   );
 }
-
-    

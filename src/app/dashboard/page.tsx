@@ -83,19 +83,17 @@ export default function Dashboard() {
 
   // Effect to set initial record or create a new one
   useEffect(() => {
-    if (userLoading || recordLoading || recordData === undefined) {
-      // While loading, we should not perform any data logic.
-      // Setting record to null will show the main loading indicator.
-      setRecord(null);
+    if (userLoading || recordLoading) {
+      setRecord(null); // Show loading indicator
       return;
     }
-    if (!user) return;
+    if (!user) return; // Wait for user
 
     const initializeRecord = async () => {
+      // recordData is either the document or null after loading
       if (recordData) {
-        // Data exists, set it
         setRecord(recalculateTotals(recordData));
-      } else if (recordData === null) {
+      } else {
         // Data has loaded and it's confirmed null (doesn't exist).
         // Create a new record for the day.
         const yesterday = subDays(date, 1);
@@ -145,6 +143,8 @@ export default function Dashboard() {
           });
           errorEmitter.emit('permission-error', permissionError);
         });
+        // Setting the new record will trigger a re-render and the useDoc hook
+        // will pick up the new data from the cache.
         setRecord(calculatedRecord);
       }
     };
@@ -224,7 +224,7 @@ export default function Dashboard() {
     });
   };
 
-  if (userLoading || recordLoading || !record) {
+  if (userLoading || !record) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />

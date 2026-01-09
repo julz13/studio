@@ -79,16 +79,18 @@ export default function PaymentsPage() {
 
   // Effect to set initial record or create a new one
   useEffect(() => {
-    if (userLoading || recordLoading || recordData === undefined) {
-      setRecord(null);
+    if (userLoading || recordLoading) {
+      setRecord(null); // Show loading indicator
       return;
     }
-    if (!user) return;
+    if (!user) return; // Wait for user
 
     const initializeRecord = async () => {
       if (recordData) {
         setRecord(recalculateTotals(recordData));
-      } else if (recordData === null) {
+      } else {
+        // Data has loaded and it's confirmed null (doesn't exist).
+        // Create a new record for the day.
         const yesterday = subDays(date, 1);
         const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
         const yesterdayRef = doc(
@@ -218,7 +220,7 @@ export default function PaymentsPage() {
     }
   };
 
-  if (userLoading || recordLoading || !record) {
+  if (userLoading || !record) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />

@@ -18,6 +18,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
+import { useUser } from '@/firebase/auth/use-user';
 
 function Logo() {
   return (
@@ -51,6 +52,7 @@ export function Header({ setRecord }: HeaderProps) {
   const pathname = usePathname();
   const auth = useAuth();
   const router = useRouter();
+  const { user } = useUser();
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -127,6 +129,7 @@ export function Header({ setRecord }: HeaderProps) {
             </SheetContent>
           </Sheet>
         )}
+        {user && <span className="text-sm font-medium text-muted-foreground">{user.displayName}</span>}
         <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Logout">
           <LogOut className="h-5 w-5" />
         </Button>

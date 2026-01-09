@@ -89,7 +89,7 @@ export default function PaymentsPage() {
     }
 
     const initializeRecord = async () => {
-      if (recordData === null) {
+      if (recordData === null) { // Only create if loading is done and data is confirmed null
         const yesterday = subDays(date, 1);
         const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
         const yesterdayRef = doc(
@@ -144,8 +144,7 @@ export default function PaymentsPage() {
     if (!recordLoading) {
       initializeRecord();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userLoading, user, date, firestore, formattedDate, recordLoading]);
+  }, [userLoading, user, date, firestore, formattedDate, recordLoading, recordData]);
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',

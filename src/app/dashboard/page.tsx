@@ -12,7 +12,7 @@ import {
   CardDescription,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Edit, Save, ArrowDown, ArrowUp } from 'lucide-react';
+import { Edit, Save, ArrowDown } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -25,7 +25,6 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useDate } from '@/context/date-context';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { Separator } from '@/components/ui/separator';
 
 const recalculateTotals = (
   recordToCalc: DailyRecord | null | undefined
@@ -95,9 +94,7 @@ export default function Dashboard() {
     }
 
     const initializeRecord = async () => {
-      // We must check if the recordData is null (which means it's loaded and doesn't exist)
-      // before attempting to create a new one. The useDoc hook will handle updates if the record exists.
-      if (recordData === null) {
+      if (recordData === null) { // Only create if loading is done and data is confirmed null
         const yesterday = subDays(date, 1);
         const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
         const yesterdayRef = doc(
@@ -149,12 +146,11 @@ export default function Dashboard() {
       }
     };
 
-    // We only want to run initialization logic after the record has been confirmed to exist or not.
     if (!recordLoading) {
       initializeRecord();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userLoading, user, date, firestore, formattedDate, recordLoading]);
+    // The dependency array is crucial. It should only react to changes that identify the document.
+  }, [userLoading, user, date, firestore, formattedDate, recordLoading, recordData]);
 
 
   // Effect to update editing fields when record loads

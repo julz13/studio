@@ -26,33 +26,37 @@ import { useDate } from '@/context/date-context';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
-const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
-  const cashSpent = updatedRecord.payments
+const recalculateTotals = (
+  recordToCalc: DailyRecord | null | undefined
+): DailyRecord | null | undefined => {
+  if (!recordToCalc) return recordToCalc;
+
+  const cashSpent = recordToCalc.payments
     .filter((p) => p.paymentMode === 'Cash')
     .reduce((sum, p) => sum + p.amount, 0);
-  const accountSpent = updatedRecord.payments
+  const accountSpent = recordToCalc.payments
     .filter((p) => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal')
     .reduce((sum, p) => sum + p.amount, 0);
   const totalSpent = cashSpent + accountSpent;
 
-  const totalWithdrawals = updatedRecord.payments
+  const totalWithdrawals = recordToCalc.payments
     .filter((p) => p.category === 'Withdrawal')
     .reduce((sum, p) => sum + p.amount, 0);
 
   const closingAccount =
-    updatedRecord.balances.opening.account - accountSpent - totalWithdrawals;
+    recordToCalc.balances.opening.account - accountSpent - totalWithdrawals;
   const closingCash =
-    updatedRecord.balances.opening.cash + totalWithdrawals - cashSpent;
+    recordToCalc.balances.opening.cash + totalWithdrawals - cashSpent;
 
   return {
-    ...updatedRecord,
+    ...recordToCalc,
     totals: {
       totalSpent,
       cashSpent,
       accountSpent,
     },
     balances: {
-      ...updatedRecord.balances,
+      ...recordToCalc.balances,
       closing: {
         account: closingAccount,
         cash: closingCash,
@@ -63,8 +67,6 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
 
 export default function Dashboard() {
   const { date, formattedDate } = useDate();
-  const [record, setRecord] = useState<DailyRecord | null>(null);
-
   const { toast } = useToast();
   const { user, loading: userLoading } = useUser();
   const firestore = useFirestore();
@@ -76,24 +78,21 @@ export default function Dashboard() {
 
   const { data: recordData, loading: recordLoading } =
     useDoc<DailyRecord>(recordRef);
+    
+  const currentRecord = useMemo(() => recalculateTotals(recordData), [recordData]);
 
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
   const [openingCash, setOpeningCash] = useState(0);
 
-  // Effect to set initial record or create a new one
+  // Effect to create a new record if one doesn't exist for the selected date
   useEffect(() => {
-    if (userLoading || recordLoading) {
-      setRecord(null); // Show loading indicator
-      return;
+    if (userLoading || recordLoading || !user) {
+      return; 
     }
-    if (!user) return; // Wait for user
 
     const initializeRecord = async () => {
-      // recordData is either the document or null after loading
-      if (recordData) {
-        setRecord(recalculateTotals(recordData));
-      } else {
+      if (recordData === null) {
         // Data has loaded and it's confirmed null (doesn't exist).
         // Create a new record for the day.
         const yesterday = subDays(date, 1);
@@ -111,7 +110,10 @@ export default function Dashboard() {
           const yesterdaySnap = await getDoc(yesterdayRef);
           if (yesterdaySnap.exists()) {
             const yesterdayData = yesterdaySnap.data() as DailyRecord;
-            opening = recalculateTotals(yesterdayData).balances.closing;
+            const calculatedYesterday = recalculateTotals(yesterdayData);
+            if (calculatedYesterday) {
+                 opening = calculatedYesterday.balances.closing;
+            }
           }
         } catch (e) {
           console.error("Could not fetch yesterday's record", e);
@@ -125,49 +127,32 @@ export default function Dashboard() {
             opening: opening,
           },
         };
-
-        const calculatedRecord = recalculateTotals(newRecord);
-        const newRecordRef = doc(
-          firestore,
-          'users',
-          user.uid,
-          'records',
-          formattedDate
-        );
-        // Save the newly created record for today
-        setDoc(newRecordRef, calculatedRecord).catch((serverError) => {
+        
+        const newRecordRef = doc(firestore, 'users', user.uid, 'records', formattedDate);
+        // This setDoc will trigger the useDoc hook to update with the new data
+        setDoc(newRecordRef, newRecord).catch((serverError) => {
           const permissionError = new FirestorePermissionError({
             path: newRecordRef.path,
             operation: 'create',
-            requestResourceData: calculatedRecord,
+            requestResourceData: newRecord,
           });
           errorEmitter.emit('permission-error', permissionError);
         });
-        // Setting the new record will trigger a re-render and the useDoc hook
-        // will pick up the new data from the cache.
-        setRecord(calculatedRecord);
       }
     };
 
     initializeRecord();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    recordData,
-    recordLoading,
-    userLoading,
-    user,
-    date,
-    firestore,
-    formattedDate,
-  ]);
+  }, [recordData, recordLoading, userLoading, user, date, firestore, formattedDate]);
+
 
   // Effect to update editing fields when record loads
   useEffect(() => {
-    if (record) {
-      setOpeningAccount(record.balances.opening.account);
-      setOpeningCash(record.balances.opening.cash);
+    if (currentRecord) {
+      setOpeningAccount(currentRecord.balances.opening.account);
+      setOpeningCash(currentRecord.balances.opening.cash);
     }
-  }, [record]);
+  }, [currentRecord]);
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -176,34 +161,30 @@ export default function Dashboard() {
   });
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
-    if (!user) return;
+    if (!user || !currentRecord) return;
+    
+    const newRecord = setter(currentRecord);
+    const calculatedRecord = recalculateTotals(newRecord) as DailyRecord;
 
-    setRecord((prev) => {
-      if (!prev) return null; // Should not happen
-      const newRecord = setter(prev);
-      const calculatedRecord = recalculateTotals(newRecord);
-
-      const recordRef = doc(
-        firestore,
-        'users',
-        user.uid,
-        'records',
-        calculatedRecord.date
-      );
-      setDoc(recordRef, calculatedRecord, { merge: true }).catch(
-        (serverError) => {
-          const permissionError = new FirestorePermissionError({
-            path: recordRef.path,
-            operation: 'update',
-            requestResourceData: calculatedRecord,
-          });
-          errorEmitter.emit('permission-error', permissionError);
-        }
-      );
-
-      return calculatedRecord;
-    });
+    const recordRef = doc(
+      firestore,
+      'users',
+      user.uid,
+      'records',
+      calculatedRecord.date
+    );
+    setDoc(recordRef, calculatedRecord, { merge: true }).catch(
+      (serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: recordRef.path,
+          operation: 'update',
+          requestResourceData: calculatedRecord,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      }
+    );
   };
+
 
   const handleSaveBalances = () => {
     handleSetRecord((prev) => ({
@@ -224,7 +205,7 @@ export default function Dashboard() {
     });
   };
 
-  if (userLoading || !record) {
+  if (userLoading || recordLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
@@ -234,6 +215,18 @@ export default function Dashboard() {
       </div>
     );
   }
+  
+  if (!currentRecord) {
+     return (
+      <div className="flex min-h-screen w-full flex-col bg-background">
+        <Header />
+        <main className="flex flex-1 items-center justify-center">
+          <p>Initializing today's record...</p>
+        </main>
+      </div>
+    );
+  }
+
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
@@ -251,12 +244,12 @@ export default function Dashboard() {
           </div>
         </div>
         <SummaryCards
-          totals={record.totals}
+          totals={currentRecord.totals}
           currencyFormatter={currencyFormatter}
         />
         <div className="grid gap-4 md:gap-8 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <ExpensesChart payments={record.payments} />
+            <ExpensesChart payments={currentRecord.payments} />
           </div>
           <div className="lg:col-span-1 flex flex-col gap-4">
             <Card>
@@ -305,13 +298,13 @@ export default function Dashboard() {
                   ) : (
                     <p className="text-2xl font-semibold">
                       {currencyFormatter.format(
-                        record.balances.opening.account
+                        currentRecord.balances.opening.account
                       )}
                     </p>
                   )}
                   <p className="text-2xl font-semibold text-right">
                     {currencyFormatter.format(
-                      record.balances.closing.account
+                      currentRecord.balances.closing.account
                     )}
                   </p>
                   <p className="text-sm text-muted-foreground">Account</p>
@@ -331,11 +324,11 @@ export default function Dashboard() {
                     />
                   ) : (
                     <p className="text-2xl font-semibold">
-                      {currencyFormatter.format(record.balances.opening.cash)}
+                      {currencyFormatter.format(currentRecord.balances.opening.cash)}
                     </p>
                   )}
                   <p className="text-2xl font-semibold text-right">
-                    {currencyFormatter.format(record.balances.closing.cash)}
+                    {currencyFormatter.format(currentRecord.balances.closing.cash)}
                   </p>
                   <p className="text-sm text-muted-foreground">Cash</p>
                   <p className="text-sm text-muted-foreground text-right">

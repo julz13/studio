@@ -26,33 +26,37 @@ import {
 } from '@/components/ui/sheet';
 import { AddPaymentForm } from '@/components/add-payment-form';
 
-const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
-  const cashSpent = updatedRecord.payments
+const recalculateTotals = (
+  recordToCalc: DailyRecord | null | undefined
+): DailyRecord | null | undefined => {
+  if (!recordToCalc) return recordToCalc;
+
+  const cashSpent = recordToCalc.payments
     .filter((p) => p.paymentMode === 'Cash')
     .reduce((sum, p) => sum + p.amount, 0);
-  const accountSpent = updatedRecord.payments
+  const accountSpent = recordToCalc.payments
     .filter((p) => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal')
     .reduce((sum, p) => sum + p.amount, 0);
   const totalSpent = cashSpent + accountSpent;
 
-  const totalWithdrawals = updatedRecord.payments
+  const totalWithdrawals = recordToCalc.payments
     .filter((p) => p.category === 'Withdrawal')
     .reduce((sum, p) => sum + p.amount, 0);
 
   const closingAccount =
-    updatedRecord.balances.opening.account - accountSpent - totalWithdrawals;
+    recordToCalc.balances.opening.account - accountSpent - totalWithdrawals;
   const closingCash =
-    updatedRecord.balances.opening.cash + totalWithdrawals - cashSpent;
+    recordToCalc.balances.opening.cash + totalWithdrawals - cashSpent;
 
   return {
-    ...updatedRecord,
+    ...recordToCalc,
     totals: {
       totalSpent,
       cashSpent,
       accountSpent,
     },
     balances: {
-      ...updatedRecord.balances,
+      ...recordToCalc.balances,
       closing: {
         account: closingAccount,
         cash: closingCash,
@@ -64,7 +68,6 @@ const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
 export default function PaymentsPage() {
   const { date, formattedDate } = useDate();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [record, setRecord] = useState<DailyRecord | null>(null);
 
   const { user, loading: userLoading } = useUser();
   const firestore = useFirestore();
@@ -77,18 +80,16 @@ export default function PaymentsPage() {
   const { data: recordData, loading: recordLoading } =
     useDoc<DailyRecord>(recordRef);
 
+  const currentRecord = useMemo(() => recalculateTotals(recordData), [recordData]);
+
   // Effect to set initial record or create a new one
   useEffect(() => {
-    if (userLoading || recordLoading) {
-      setRecord(null); // Show loading indicator
-      return;
+    if (userLoading || recordLoading || !user) {
+      return; 
     }
-    if (!user) return; // Wait for user
 
     const initializeRecord = async () => {
-      if (recordData) {
-        setRecord(recalculateTotals(recordData));
-      } else {
+      if (recordData === null) {
         // Data has loaded and it's confirmed null (doesn't exist).
         // Create a new record for the day.
         const yesterday = subDays(date, 1);
@@ -106,7 +107,10 @@ export default function PaymentsPage() {
           const yesterdaySnap = await getDoc(yesterdayRef);
           if (yesterdaySnap.exists()) {
             const yesterdayData = yesterdaySnap.data() as DailyRecord;
-            opening = recalculateTotals(yesterdayData).balances.closing;
+            const calculatedYesterday = recalculateTotals(yesterdayData);
+             if (calculatedYesterday) {
+                 opening = calculatedYesterday.balances.closing;
+            }
           }
         } catch (e) {
           console.error("Could not fetch yesterday's record", e);
@@ -121,7 +125,6 @@ export default function PaymentsPage() {
           },
         };
 
-        const calculatedRecord = recalculateTotals(newRecord);
         const newRecordRef = doc(
           firestore,
           'users',
@@ -130,29 +133,20 @@ export default function PaymentsPage() {
           formattedDate
         );
         // Save the newly created record for today
-        setDoc(newRecordRef, calculatedRecord).catch((serverError) => {
+        setDoc(newRecordRef, newRecord).catch((serverError) => {
           const permissionError = new FirestorePermissionError({
             path: newRecordRef.path,
             operation: 'create',
-            requestResourceData: calculatedRecord,
+            requestResourceData: newRecord,
           });
           errorEmitter.emit('permission-error', permissionError);
         });
-        setRecord(calculatedRecord);
       }
     };
 
     initializeRecord();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    recordData,
-    recordLoading,
-    userLoading,
-    user,
-    date,
-    firestore,
-    formattedDate,
-  ]);
+  }, [recordData, recordLoading, userLoading, user, date, firestore, formattedDate]);
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -161,39 +155,34 @@ export default function PaymentsPage() {
   });
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
-    if (!user) return;
+    if (!user || !currentRecord) return;
+    
+    const newRecord = setter(currentRecord);
+    const calculatedRecord = recalculateTotals(newRecord) as DailyRecord;
 
-    setRecord((prev) => {
-      if (!prev) return null;
-      const newRecord = setter(prev);
-      const calculatedRecord = recalculateTotals(newRecord);
-
-      const recordRef = doc(
-        firestore,
-        'users',
-        user.uid,
-        'records',
-        calculatedRecord.date
-      );
-      setDoc(recordRef, calculatedRecord, { merge: true }).catch(
-        (serverError) => {
-          const permissionError = new FirestorePermissionError({
-            path: recordRef.path,
-            operation: 'update',
-            requestResourceData: calculatedRecord,
-          });
-          errorEmitter.emit('permission-error', permissionError);
-        }
-      );
-
-      return calculatedRecord;
-    });
+    const recordRef = doc(
+      firestore,
+      'users',
+      user.uid,
+      'records',
+      calculatedRecord.date
+    );
+    setDoc(recordRef, calculatedRecord, { merge: true }).catch(
+      (serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: recordRef.path,
+          operation: 'update',
+          requestResourceData: calculatedRecord,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      }
+    );
   };
 
   const handleExport = () => {
-    if (!record) return;
-    const csvData = record.payments.map((p) => ({
-      Date: record.date,
+    if (!currentRecord) return;
+    const csvData = currentRecord.payments.map((p) => ({
+      Date: currentRecord.date,
       Time: p.time,
       Item: p.item,
       Category: p.category,
@@ -211,7 +200,7 @@ export default function PaymentsPage() {
       link.setAttribute('href', url);
       link.setAttribute(
         'download',
-        `FinanceFlow_export_${record.date}.csv`
+        `FinanceFlow_export_${currentRecord.date}.csv`
       );
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
@@ -220,12 +209,23 @@ export default function PaymentsPage() {
     }
   };
 
-  if (userLoading || !record) {
+  if (userLoading || recordLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />
         <main className="flex flex-1 items-center justify-center">
           <p>Loading your financial records...</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!currentRecord) {
+     return (
+      <div className="flex min-h-screen w-full flex-col bg-background">
+        <Header />
+        <main className="flex flex-1 items-center justify-center">
+          <p>Initializing today's record...</p>
         </main>
       </div>
     );
@@ -273,7 +273,7 @@ export default function PaymentsPage() {
             </Sheet>
             <Button
               onClick={handleExport}
-              disabled={!record || record.payments.length === 0}
+              disabled={!currentRecord || currentRecord.payments.length === 0}
             >
               <Download className="mr-2 h-4 w-4" />
               Export
@@ -281,7 +281,7 @@ export default function PaymentsPage() {
           </div>
         </div>
         <PaymentsTable
-          payments={record.payments}
+          payments={currentRecord.payments}
           setRecord={handleSetRecord}
           currencyFormatter={currencyFormatter}
         />

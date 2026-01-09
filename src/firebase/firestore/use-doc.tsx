@@ -1,14 +1,11 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import {
   onSnapshot,
-  doc,
-  getDoc,
   type DocumentReference,
-  type DocumentData,
+  getDoc,
 } from 'firebase/firestore';
-import { useFirestore } from '../provider';
 import { errorEmitter } from '../error-emitter';
 import { FirestorePermissionError } from '../errors';
 
@@ -20,6 +17,9 @@ export function useDoc<T>(
   ref: DocumentReference | undefined,
   options: Options = { listen: true },
 ) {
+  // undefined: initial state, not yet loaded
+  // null: document does not exist
+  // T: document exists
   const [data, setData] = useState<T | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
@@ -78,6 +78,7 @@ export function useDoc<T>(
         unsubscribe();
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref, options.listen]);
 
   return { data, loading };

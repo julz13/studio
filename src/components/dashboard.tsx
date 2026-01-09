@@ -18,9 +18,11 @@ import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 
 import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { useAuth } from '@/firebase';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function Dashboard() {
   const { user, loading: userLoading } = useUser();
@@ -29,15 +31,18 @@ export default function Dashboard() {
   const [date, setDate] = useState<Date | undefined>(new Date());
   
   const recordId = date ? format(date, 'yyyy-MM-dd') : '';
-  const docPath = user && recordId ? `/users/${user.uid}/records/${recordId}` : undefined;
   
   const recordRef = useMemoFirebase(() => {
-    return docPath ? doc(firestore, docPath) : undefined;
-  }, [firestore, docPath]);
+    if (!firestore || !user?.uid || !recordId) return undefined;
+    return doc(firestore, `/users/${user.uid}/records/${recordId}`);
+  }, [firestore, user?.uid, recordId]);
 
   const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef, { listen: true });
 
-  const [localRecord, setLocalRecord] = useState<DailyRecord | null | undefined>(record);
+  const [localRecord, setLocalRecord] = useState<DailyRecord>(() => ({
+    ...mockDailyRecord,
+    date: recordId
+  }));
 
   const { toast } = useToast();
   const [isEditingBalances, setIsEditingBalances] = useState(false);
@@ -58,47 +63,46 @@ export default function Dashboard() {
     }
   }, [user, userLoading, auth]);
 
-  const updateRecord = useCallback(async (updatedRecord: DailyRecord) => {
+  const updateRecord = useCallback((updatedRecord: DailyRecord) => {
     if (!recordRef) return;
-    try {
-      await setDoc(recordRef, updatedRecord, { merge: true });
-    } catch (error) {
-      console.error("Error updating record: ", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Could not save changes to the database.",
-      });
-    }
+    setDoc(recordRef, updatedRecord, { merge: true }).catch(async (serverError) => {
+        const permissionError = new FirestorePermissionError({
+            path: recordRef.path,
+            operation: 'write',
+            requestResourceData: updatedRecord
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({
+            variant: "destructive",
+            title: "Permission Error",
+            description: "Could not save changes to the database. Check your security rules.",
+        });
+    });
   }, [recordRef, toast]);
 
 
   useEffect(() => {
-    const manageRecord = async () => {
-      if (!user || !date) return;
-      if (recordLoading) return;
-
-      const currentRecordId = format(date, 'yyyy-MM-dd');
-
-      if (record === undefined) {
-         setLocalRecord(undefined); // Loading state
-      } else if (record === null) {
-        // Doc doesn't exist, create it
-        const newRecord = {
-          ...mockDailyRecord,
-          date: currentRecordId,
-        };
-        setLocalRecord(newRecord);
-        if (recordRef) {
-           await setDoc(recordRef, newRecord);
-        }
-      } else {
-        // Doc exists
-        setLocalRecord(record);
+    const currentRecordId = date ? format(date, 'yyyy-MM-dd') : '';
+    // When the date changes, create a new default local record.
+    setLocalRecord({
+      ...mockDailyRecord,
+      date: currentRecordId,
+    });
+    
+    // When firestore data loads, sync it to local state.
+    if (record) { // record is a valid DailyRecord from firestore
+      setLocalRecord(record);
+    } else if (record === null) { // record is null, meaning doc doesn't exist
+      const newRecord = {
+        ...mockDailyRecord,
+        date: currentRecordId,
+      };
+      setLocalRecord(newRecord);
+      if(recordRef) {
+        updateRecord(newRecord);
       }
-    };
-    manageRecord();
-  }, [user, date, record, recordLoading, recordRef]);
+    }
+  }, [date, record, recordRef, updateRecord]);
 
 
   useEffect(() => {
@@ -164,7 +168,6 @@ export default function Dashboard() {
   };
 
   const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
-    if (!localRecord) return;
     const newRecord = setter(localRecord);
     setLocalRecord(newRecord);
     updateRecord(newRecord);
@@ -204,36 +207,6 @@ export default function Dashboard() {
       title: "Copied to Clipboard",
       description: "Google Sheet URL has been copied.",
     });
-  }
-
-  const isLoading = userLoading || recordLoading || localRecord === undefined;
-  
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen w-full flex-col bg-background">
-        <Header />
-        <main className="flex flex-1 items-center justify-center">
-            <div className="flex items-center gap-2">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <p className="text-muted-foreground">Loading your financial data...</p>
-            </div>
-        </main>
-      </div>
-    )
-  }
-
-  if (!localRecord) {
-     return (
-      <div className="flex min-h-screen w-full flex-col bg-background">
-        <Header />
-        <main className="flex flex-1 items-center justify-center">
-            <div className="text-center">
-                <p className="text-muted-foreground">Could not load record for this day.</p>
-                <p className="text-sm text-muted-foreground">Try selecting a different date.</p>
-            </div>
-        </main>
-      </div>
-     )
   }
   
   return (

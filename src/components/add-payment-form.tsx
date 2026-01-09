@@ -38,7 +38,7 @@ const paymentSchema = z.object({
 type PaymentFormValues = z.infer<typeof paymentSchema>;
 
 interface AddPaymentFormProps {
-  setRecord: Dispatch<SetStateAction<DailyRecord>>;
+  setRecord: (setter: (prev: DailyRecord) => DailyRecord) => void;
   setSheetOpen: Dispatch<SetStateAction<boolean>>;
 }
 
@@ -216,5 +216,3 @@ export function AddPaymentForm({ setRecord, setSheetOpen }: AddPaymentFormProps)
     </Form>
   );
 }
-
-    

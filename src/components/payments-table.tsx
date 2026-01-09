@@ -18,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Banknote } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Banknote, Trash2 } from 'lucide-react';
 import type { DailyRecord, Payment } from '@/lib/types';
 import { AddPaymentForm } from './add-payment-form';
 import { AddWithdrawalForm } from './add-withdrawal-form';
@@ -31,16 +31,61 @@ import {
   SheetDescription
 } from './ui/sheet';
 import { CategoryIcon } from './category-icon';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 interface PaymentsTableProps {
   payments: Payment[];
-  setRecord: Dispatch<SetStateAction<DailyRecord>>;
+  setRecord: (setter: (prev: DailyRecord) => DailyRecord) => void;
   currencyFormatter: Intl.NumberFormat;
 }
 
 export function PaymentsTable({ payments, setRecord, currencyFormatter }: PaymentsTableProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isWithdrawSheetOpen, setIsWithdrawSheetOpen] = useState(false);
+
+  const handleDelete = (paymentId: string) => {
+    setRecord((prev) => {
+       const updatedPayments = prev.payments.filter((p) => p.id !== paymentId);
+       
+       const cashSpent = updatedPayments.filter(p => p.paymentMode === 'Cash').reduce((sum, p) => sum + p.amount, 0);
+       const accountSpent = updatedPayments.filter(p => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
+       const totalSpent = cashSpent + accountSpent;
+ 
+       const totalWithdrawals = updatedPayments
+         .filter(p => p.category === 'Withdrawal')
+         .reduce((sum, p) => sum + p.amount, 0);
+ 
+       const closingAccount = prev.balances.opening.account - accountSpent - totalWithdrawals;
+       const closingCash = prev.balances.opening.cash + totalWithdrawals - cashSpent;
+ 
+       return {
+         ...prev,
+         payments: updatedPayments,
+         totals: {
+           totalSpent,
+           cashSpent,
+           accountSpent,
+         },
+         balances: {
+           ...prev.balances,
+           closing: {
+             account: closingAccount,
+             cash: closingCash,
+           },
+         },
+       };
+    })
+  }
 
   return (
     <Card>
@@ -93,62 +138,83 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
         </div>
       </CardHeader>
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Item Details</TableHead>
-              <TableHead className="hidden sm:table-cell">Category</TableHead>
-              <TableHead className="hidden sm:table-cell">Mode</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead>
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {payments.map((payment) => (
-              <TableRow key={payment.id}>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                      <div className="p-2 bg-muted rounded-full">
-                          <CategoryIcon category={payment.category} className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div>
-                          <div className="font-medium">{payment.item}</div>
-                          <div className="hidden text-sm text-muted-foreground md:inline">
-                            {payment.time} {payment.notes && ` - ${payment.notes}`}
-                          </div>
-                      </div>
-                  </div>
-                </TableCell>
-                <TableCell className="hidden sm:table-cell">
-                  <Badge variant={payment.category === 'Withdrawal' ? 'secondary' : 'outline'}>{payment.category}</Badge>
-                </TableCell>
-                <TableCell className="hidden sm:table-cell">{payment.paymentMode}</TableCell>
-                <TableCell className="text-right">
-                  {currencyFormatter.format(payment.amount)}
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button aria-haspopup="true" size="icon" variant="ghost">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Toggle menu</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>Edit</DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
+        {payments.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Item Details</TableHead>
+                <TableHead className="hidden sm:table-cell">Category</TableHead>
+                <TableHead className="hidden sm:table-cell">Mode</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead>
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {payments.map((payment) => (
+                <TableRow key={payment.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-muted rounded-full">
+                            <CategoryIcon category={payment.category} className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div>
+                            <div className="font-medium">{payment.item}</div>
+                            <div className="hidden text-sm text-muted-foreground md:inline">
+                              {payment.time} {payment.notes && ` - ${payment.notes}`}
+                            </div>
+                        </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    <Badge variant={payment.category === 'Withdrawal' ? 'secondary' : 'outline'}>{payment.category}</Badge>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">{payment.paymentMode}</TableCell>
+                  <TableCell className="text-right">
+                    {currencyFormatter.format(payment.amount)}
+                  </TableCell>
+                  <TableCell>
+                    <AlertDialog>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button aria-haspopup="true" size="icon" variant="ghost">
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Toggle menu</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem disabled>Edit</DropdownMenuItem>
+                          <AlertDialogTrigger asChild>
+                            <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+                          </AlertDialogTrigger>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                       <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete the payment for "{payment.item}". This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDelete(payment.id)}>Delete</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="text-center text-muted-foreground py-12">
+            <p>No payments recorded for this day yet.</p>
+            <p className="text-sm">Click "Add Payment" to get started.</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
-
-    

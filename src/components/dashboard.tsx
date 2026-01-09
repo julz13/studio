@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { mockDailyRecord } from '@/lib/data';
 import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
@@ -8,7 +8,7 @@ import { SummaryCards } from '@/components/summary-cards';
 import { PaymentsTable } from '@/components/payments-table';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIcon, Download, Copy, Share2, Edit, Save } from 'lucide-react';
+import { Calendar as CalendarIcon, Download, Copy, Share2, Edit, Save, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
@@ -17,23 +17,99 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 
+import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { signInAnonymously } from 'firebase/auth';
+import { useAuth } from '@/firebase';
+
 export default function Dashboard() {
-  const [record, setRecord] = useState<DailyRecord>(mockDailyRecord);
+  const { user, loading: userLoading } = useUser();
+  const auth = useAuth();
+  const firestore = useFirestore();
   const [date, setDate] = useState<Date | undefined>(new Date());
+  
+  const recordId = date ? format(date, 'yyyy-MM-dd') : '';
+  const docPath = user && recordId ? `/users/${user.uid}/records/${recordId}` : undefined;
+  
+  const recordRef = useMemoFirebase(() => {
+    return docPath ? doc(firestore, docPath) : undefined;
+  }, [firestore, docPath]);
+
+  const { data: record, loading: recordLoading } = useDoc<DailyRecord>(recordRef, { listen: true });
+
+  const [localRecord, setLocalRecord] = useState<DailyRecord | null | undefined>(record);
+
   const { toast } = useToast();
   const [isEditingBalances, setIsEditingBalances] = useState(false);
-  const [openingAccount, setOpeningAccount] = useState(record.balances.opening.account);
-  const [openingCash, setOpeningCash] = useState(record.balances.opening.cash);
+  const [openingAccount, setOpeningAccount] = useState(0);
+  const [openingCash, setOpeningCash] = useState(0);
 
   const googleSheetUrl = "https://docs.google.com/spreadsheets/d/1DbFKdTARUxfqRHURdFaz-cnPavHCvONGm_cwTuWllNk/edit?gid=592434066#gid=592434066";
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: record.metadata.currency,
+    currency: 'INR',
     minimumFractionDigits: 0,
   });
 
-  const recalculateTotals = (updatedRecord: DailyRecord): DailyRecord => {
+   useEffect(() => {
+    if (!user && !userLoading) {
+      signInAnonymously(auth);
+    }
+  }, [user, userLoading, auth]);
+
+  const updateRecord = useCallback(async (updatedRecord: DailyRecord) => {
+    if (!recordRef) return;
+    try {
+      await setDoc(recordRef, updatedRecord, { merge: true });
+    } catch (error) {
+      console.error("Error updating record: ", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not save changes to the database.",
+      });
+    }
+  }, [recordRef, toast]);
+
+
+  useEffect(() => {
+    const manageRecord = async () => {
+      if (!user || !date) return;
+      if (recordLoading) return;
+
+      const currentRecordId = format(date, 'yyyy-MM-dd');
+
+      if (record === undefined) {
+         setLocalRecord(undefined); // Loading state
+      } else if (record === null) {
+        // Doc doesn't exist, create it
+        const newRecord = {
+          ...mockDailyRecord,
+          date: currentRecordId,
+        };
+        setLocalRecord(newRecord);
+        if (recordRef) {
+           await setDoc(recordRef, newRecord);
+        }
+      } else {
+        // Doc exists
+        setLocalRecord(record);
+      }
+    };
+    manageRecord();
+  }, [user, date, record, recordLoading, recordRef]);
+
+
+  useEffect(() => {
+    if (localRecord) {
+      setOpeningAccount(localRecord.balances.opening.account);
+      setOpeningCash(localRecord.balances.opening.cash);
+    }
+  }, [localRecord]);
+
+
+  const recalculateTotals = useCallback((updatedRecord: DailyRecord): DailyRecord => {
     const cashSpent = updatedRecord.payments.filter(p => p.paymentMode === 'Cash').reduce((sum, p) => sum + p.amount, 0);
     const accountSpent = updatedRecord.payments.filter(p => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
     const totalSpent = cashSpent + accountSpent;
@@ -60,23 +136,26 @@ export default function Dashboard() {
         },
       },
     };
-  };
+  }, []);
   
   const handleSaveBalances = () => {
-    setRecord(prevRecord => {
-      const updatedRecordWithNewOpening = {
-        ...prevRecord,
-        balances: {
-          ...prevRecord.balances,
-          opening: {
-            account: openingAccount,
-            cash: openingCash,
-          },
+    if (!localRecord) return;
+    
+    const updatedRecordWithNewOpening = {
+      ...localRecord,
+      balances: {
+        ...localRecord.balances,
+        opening: {
+          account: openingAccount,
+          cash: openingCash,
         },
-      };
-      // Recalculate everything based on new opening balances
-      return recalculateTotals(updatedRecordWithNewOpening);
-    });
+      },
+    };
+    const fullyRecalculatedRecord = recalculateTotals(updatedRecordWithNewOpening);
+    
+    setLocalRecord(fullyRecalculatedRecord);
+    updateRecord(fullyRecalculatedRecord);
+
     setIsEditingBalances(false);
     toast({
       title: "Balances Updated",
@@ -84,21 +163,18 @@ export default function Dashboard() {
     });
   };
 
-  useEffect(() => {
-    setOpeningAccount(record.balances.opening.account);
-    setOpeningCash(record.balances.opening.cash);
-  }, [record.balances.opening]);
-
-  useEffect(() => {
-    if (date) {
-      setRecord(prev => ({...prev, date: format(date, 'yyyy-MM-dd')}));
-    }
-  }, [date]);
+  const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
+    if (!localRecord) return;
+    const newRecord = setter(localRecord);
+    setLocalRecord(newRecord);
+    updateRecord(newRecord);
+  };
 
 
   const handleExport = () => {
-    const csvData = record.payments.map(p => ({
-      Date: record.date,
+    if (!localRecord) return;
+    const csvData = localRecord.payments.map(p => ({
+      Date: localRecord.date,
       Time: p.time,
       Item: p.item,
       Category: p.category,
@@ -114,7 +190,7 @@ export default function Dashboard() {
     if (link.download !== undefined) {
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `FinanceFlow_export_${record.date}.csv`);
+      link.setAttribute('download', `FinanceFlow_export_${localRecord.date}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -128,6 +204,36 @@ export default function Dashboard() {
       title: "Copied to Clipboard",
       description: "Google Sheet URL has been copied.",
     });
+  }
+
+  const isLoading = userLoading || recordLoading || localRecord === undefined;
+  
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen w-full flex-col bg-background">
+        <Header />
+        <main className="flex flex-1 items-center justify-center">
+            <div className="flex items-center gap-2">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <p className="text-muted-foreground">Loading your financial data...</p>
+            </div>
+        </main>
+      </div>
+    )
+  }
+
+  if (!localRecord) {
+     return (
+      <div className="flex min-h-screen w-full flex-col bg-background">
+        <Header />
+        <main className="flex flex-1 items-center justify-center">
+            <div className="text-center">
+                <p className="text-muted-foreground">Could not load record for this day.</p>
+                <p className="text-sm text-muted-foreground">Try selecting a different date.</p>
+            </div>
+        </main>
+      </div>
+     )
   }
   
   return (
@@ -153,21 +259,22 @@ export default function Dashboard() {
                   selected={date}
                   onSelect={setDate}
                   initialFocus
+                  disabled={(d) => d > new Date()}
                 />
               </PopoverContent>
             </Popover>
-            <Button onClick={handleExport}>
+            <Button onClick={handleExport} disabled={!localRecord || localRecord.payments.length === 0}>
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
           </div>
         </div>
-        <SummaryCards totals={record.totals} currencyFormatter={currencyFormatter} />
+        <SummaryCards totals={localRecord.totals} currencyFormatter={currencyFormatter} />
         <div className="grid gap-4 md:gap-8 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <PaymentsTable
-              payments={record.payments}
-              setRecord={setRecord}
+              payments={localRecord.payments}
+              setRecord={handleSetRecord}
               currencyFormatter={currencyFormatter}
             />
           </div>
@@ -204,9 +311,9 @@ export default function Dashboard() {
                         className="text-2xl font-semibold p-0 border-0 focus-visible:ring-0"
                       />
                     ) : (
-                      <p className="text-2xl font-semibold">{currencyFormatter.format(record.balances.opening.account)}</p>
+                      <p className="text-2xl font-semibold">{currencyFormatter.format(localRecord.balances.opening.account)}</p>
                     )}
-                    <p className="text-2xl font-semibold text-right">{currencyFormatter.format(record.balances.closing.account)}</p>
+                    <p className="text-2xl font-semibold text-right">{currencyFormatter.format(localRecord.balances.closing.account)}</p>
                     <p className="text-sm text-muted-foreground">Account</p>
                     <p className="text-sm text-muted-foreground text-right">Account</p>
                 </div>
@@ -221,9 +328,9 @@ export default function Dashboard() {
                         className="text-2xl font-semibold p-0 border-0 focus-visible:ring-0"
                       />
                     ) : (
-                      <p className="text-2xl font-semibold">{currencyFormatter.format(record.balances.opening.cash)}</p>
+                      <p className="text-2xl font-semibold">{currencyFormatter.format(localRecord.balances.opening.cash)}</p>
                     )}
-                    <p className="text-2xl font-semibold text-right">{currencyFormatter.format(record.balances.closing.cash)}</p>
+                    <p className="text-2xl font-semibold text-right">{currencyFormatter.format(localRecord.balances.closing.cash)}</p>
                     <p className="text-sm text-muted-foreground">Cash</p>
                     <p className="text-sm text-muted-foreground text-right">Cash</p>
                 </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   onSnapshot,
   doc,
@@ -17,21 +17,20 @@ type Options = {
 };
 
 export function useDoc<T>(
-  path: string | DocumentReference,
+  ref: DocumentReference | undefined,
   options: Options = { listen: true },
 ) {
-  const db = useFirestore();
-  const [data, setData] = useState<T | null>(null);
+  const [data, setData] = useState<T | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!path) {
+    if (!ref) {
       setLoading(false);
       setData(null);
       return;
     }
 
-    const ref = typeof path === 'string' ? doc(db, path) : path;
+    setLoading(true);
 
     async function getDocument() {
       try {
@@ -44,6 +43,7 @@ export function useDoc<T>(
           operation: 'get',
         });
         errorEmitter.emit('permission-error', permissionError);
+        setData(null);
       } finally {
         setLoading(false);
       }
@@ -65,6 +65,7 @@ export function useDoc<T>(
             operation: 'get',
           });
           errorEmitter.emit('permission-error', permissionError);
+          setData(null);
           setLoading(false);
         },
       );
@@ -77,7 +78,7 @@ export function useDoc<T>(
         unsubscribe();
       }
     };
-  }, [path, db, options.listen]);
+  }, [ref, options.listen]);
 
   return { data, loading };
 }

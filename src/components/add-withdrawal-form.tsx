@@ -27,7 +27,7 @@ const withdrawalSchema = z.object({
 type WithdrawalFormValues = z.infer<typeof withdrawalSchema>;
 
 interface AddWithdrawalFormProps {
-  setRecord: Dispatch<SetStateAction<DailyRecord>>;
+  setRecord: (setter: (prev: DailyRecord) => DailyRecord) => void;
   setSheetOpen: Dispatch<SetStateAction<boolean>>;
 }
 
@@ -127,5 +127,3 @@ export function AddWithdrawalForm({ setRecord, setSheetOpen }: AddWithdrawalForm
     </Form>
   );
 }
-
-    

@@ -120,6 +120,7 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
               <TableRow>
                 <TableHead>Item Details</TableHead>
                 <TableHead className="hidden sm:table-cell">Category</TableHead>
+                <TableHead className="hidden md:table-cell">Notes</TableHead>
                 <TableHead className="hidden sm:table-cell">Mode</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead>
@@ -137,8 +138,8 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
                         </div>
                         <div>
                             <div className="font-medium">{payment.item}</div>
-                            <div className="hidden text-sm text-muted-foreground md:inline">
-                              {payment.time} {payment.notes && ` - ${payment.notes}`}
+                            <div className="text-sm text-muted-foreground">
+                              {payment.time}
                             </div>
                         </div>
                     </div>
@@ -146,6 +147,7 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
                   <TableCell className="hidden sm:table-cell">
                     <Badge variant={payment.category === 'Withdrawal' ? 'secondary' : 'outline'}>{payment.category}</Badge>
                   </TableCell>
+                  <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{payment.notes}</TableCell>
                   <TableCell className="hidden sm:table-cell">{payment.paymentMode}</TableCell>
                   <TableCell className="text-right">
                     {currencyFormatter.format(payment.amount)}

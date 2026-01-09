@@ -8,15 +8,21 @@ import { SummaryCards } from '@/components/summary-cards';
 import { PaymentsTable } from '@/components/payments-table';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIcon, Download } from 'lucide-react';
+import { Calendar as CalendarIcon, Download, Copy, Share2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { unparse } from 'papaparse';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import Link from 'next/link';
 
 export default function Dashboard() {
   const [record, setRecord] = useState<DailyRecord>(mockDailyRecord);
   const [date, setDate] = useState<Date | undefined>(new Date(record.date));
+  const { toast } = useToast();
+
+  const googleSheetUrl = "https://docs.google.com/spreadsheets/d/1DbFKdTARUxfqRHURdFaz-cnPavHCvONGm_cwTuWllNk/edit?gid=592434066#gid=592434066";
 
   // In a real app, you would fetch the record for the selected date
   // useEffect(() => {
@@ -54,6 +60,14 @@ export default function Dashboard() {
       document.body.removeChild(link);
     }
   };
+
+  const handleCopyToClipboard = () => {
+    navigator.clipboard.writeText(googleSheetUrl);
+    toast({
+      title: "Copied to Clipboard",
+      description: "Google Sheet URL has been copied.",
+    });
+  }
   
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
@@ -96,7 +110,7 @@ export default function Dashboard() {
               currencyFormatter={currencyFormatter}
             />
           </div>
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 flex flex-col gap-4">
             <Card>
               <CardHeader>
                 <CardTitle className="font-headline">Balances</CardTitle>
@@ -119,6 +133,26 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground">Cash</p>
                     <p className="text-sm text-muted-foreground text-right">Cash</p>
                 </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-headline">Google Sheet</CardTitle>
+                <CardDescription>View and manage your data in Google Sheets.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-2">
+                    <Input readOnly value={googleSheetUrl} />
+                    <Button variant="outline" size="icon" onClick={handleCopyToClipboard}>
+                        <Copy className="h-4 w-4" />
+                    </Button>
+                </div>
+                <Button asChild className="w-full">
+                    <Link href={googleSheetUrl} target="_blank">
+                        <Share2 className="mr-2 h-4 w-4" />
+                        Open Google Sheet
+                    </Link>
+                </Button>
               </CardContent>
             </Card>
           </div>

@@ -19,7 +19,7 @@ import Link from 'next/link';
 
 export default function Dashboard() {
   const [record, setRecord] = useState<DailyRecord>(mockDailyRecord);
-  const [date, setDate] = useState<Date | undefined>(new Date(record.date));
+  const [date, setDate] = useState<Date | undefined>(new Date());
   const { toast } = useToast();
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(record.balances.opening.account);
@@ -90,9 +90,10 @@ export default function Dashboard() {
   }, [record.balances.opening]);
 
   useEffect(() => {
-    setRecord(recalculateTotals(record));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (date) {
+      setRecord(prev => ({...prev, date: format(date, 'yyyy-MM-dd')}));
+    }
+  }, [date]);
 
 
   const handleExport = () => {
@@ -254,5 +255,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-    

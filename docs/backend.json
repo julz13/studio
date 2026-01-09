@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "user": {
+      "title": "User",
+      "description": "A user of the application.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The user's unique ID."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The user's email address."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name."
+        }
+      },
+      "required": ["uid", "email"]
+    },
+    "dailyRecord": {
+      "title": "Daily Record",
+      "description": "A daily record of financial transactions.",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "The date of the record in YYYY-MM-DD format."
+        },
+        "balances": {
+          "type": "object",
+          "properties": {
+            "opening": {
+              "type": "object",
+              "properties": {
+                "account": { "type": "number" },
+                "cash": { "type": "number" }
+              }
+            },
+            "closing": {
+              "type": "object",
+              "properties": {
+                "account": { "type": "number" },
+                "cash": { "type": "number" }
+              }
+            }
+          }
+        },
+        "payments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/backend/entities/payment"
+          }
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "totalSpent": { "type": "number" },
+            "cashSpent": { "type": "number" },
+            "accountSpent": { "type": "number" }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "currency": { "type": "string", "enum": ["INR", "USD", "EUR"] }
+          }
+        }
+      },
+      "required": ["date", "balances", "payments", "totals", "metadata"]
+    },
+    "payment": {
+      "title": "Payment",
+      "description": "A single payment transaction.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "item": { "type": "string" },
+        "category": {
+          "type": "string",
+          "enum": ["Food", "Transport", "Shopping", "Entertainment", "Utilities", "Withdrawal", "Other"]
+        },
+        "paymentMode": {
+          "type": "string",
+          "enum": ["Cash", "UPI", "Card", "N/A"]
+        },
+        "amount": { "type": "number" },
+        "time": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "item", "category", "paymentMode", "amount", "time"]
+    }
+  },
+  "auth": {
+    "providers": ["anonymous"]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/backend/entities/user" },
+      "description": "Stores user profile information."
+    },
+    "/users/{userId}/records/{recordId}": {
+      "schema": { "$ref": "#/backend/entities/dailyRecord" },
+      "description": "Stores daily financial records for a user. The recordId should be the date in YYYY-MM-DD format."
+    }
+  }
+}

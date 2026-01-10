@@ -38,11 +38,12 @@ const paymentSchema = z.object({
 type PaymentFormValues = z.infer<typeof paymentSchema>;
 
 interface AddPaymentFormProps {
-  setRecord: (setter: (prev: DailyRecord) => DailyRecord) => void;
+  currentRecord: DailyRecord;
+  onAddPayment: (payments: Payment[]) => void;
   setSheetOpen: Dispatch<SetStateAction<boolean>>;
 }
 
-export function AddPaymentForm({ setRecord, setSheetOpen }: AddPaymentFormProps) {
+export function AddPaymentForm({ currentRecord, onAddPayment, setSheetOpen }: AddPaymentFormProps) {
   const { toast } = useToast();
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
@@ -62,13 +63,8 @@ export function AddPaymentForm({ setRecord, setSheetOpen }: AddPaymentFormProps)
       time: format(new Date(), "HH:mm"),
     };
 
-    setRecord((prevRecord) => {
-      const updatedPayments = [...prevRecord.payments, newPayment].sort((a, b) => a.time.localeCompare(b.time));
-      return {
-        ...prevRecord,
-        payments: updatedPayments,
-      };
-    });
+    const updatedPayments = [...currentRecord.payments, newPayment].sort((a, b) => a.time.localeCompare(b.time));
+    onAddPayment(updatedPayments);
 
     toast({
       title: "Payment Added",

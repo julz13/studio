@@ -44,21 +44,16 @@ import {
 
 interface PaymentsTableProps {
   payments: Payment[];
-  setRecord: (setter: (prev: DailyRecord) => DailyRecord) => void;
+  onUpdatePayments: (payments: Payment[]) => void;
   currencyFormatter: Intl.NumberFormat;
 }
 
-export function PaymentsTable({ payments, setRecord, currencyFormatter }: PaymentsTableProps) {
+export function PaymentsTable({ payments, onUpdatePayments, currencyFormatter }: PaymentsTableProps) {
   const [isWithdrawSheetOpen, setIsWithdrawSheetOpen] = useState(false);
 
   const handleDelete = (paymentId: string) => {
-    setRecord((prev) => {
-       const updatedPayments = prev.payments.filter((p) => p.id !== paymentId);
-       return {
-         ...prev,
-         payments: updatedPayments,
-       };
-    })
+    const updatedPayments = payments.filter((p) => p.id !== paymentId);
+    onUpdatePayments(updatedPayments);
   }
 
   return (
@@ -87,7 +82,11 @@ export function PaymentsTable({ payments, setRecord, currencyFormatter }: Paymen
                   Enter the amount you withdrew from your bank account to cash.
                 </SheetDescription>
               </SheetHeader>
-              <AddWithdrawalForm setRecord={setRecord} setSheetOpen={setIsWithdrawSheetOpen} />
+              <AddWithdrawalForm 
+                currentRecord={{ payments } as DailyRecord} 
+                onAddWithdrawal={onUpdatePayments} 
+                setSheetOpen={setIsWithdrawSheetOpen} 
+              />
             </SheetContent>
           </Sheet>
         </div>

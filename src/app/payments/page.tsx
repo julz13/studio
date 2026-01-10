@@ -27,9 +27,9 @@ import {
 import { AddPaymentForm } from '@/components/add-payment-form';
 
 const recalculateTotals = (
-  recordToCalc: DailyRecord | null | undefined
-): DailyRecord | null | undefined => {
-  if (!recordToCalc) return recordToCalc;
+  recordToCalc: DailyRecord | null
+): DailyRecord | null => {
+  if (!recordToCalc) return null;
 
   const cashSpent = recordToCalc.payments
     .filter((p) => p.paymentMode === 'Cash')
@@ -80,11 +80,11 @@ export default function PaymentsPage() {
   const { data: recordData, loading: recordLoading } =
     useDoc<DailyRecord>(recordRef);
 
-  const currentRecord = useMemo(() => recalculateTotals(recordData), [recordData]);
+  const currentRecord = useMemo(() => recalculateTotals(recordData || null), [recordData]);
 
   // Effect to set initial record or create a new one
   useEffect(() => {
-    if (userLoading || !user) {
+    if (userLoading || recordLoading || !user) {
       return;
     }
 
@@ -141,9 +141,7 @@ export default function PaymentsPage() {
       }
     };
 
-    if (!recordLoading) {
-      initializeRecord();
-    }
+    initializeRecord();
   }, [userLoading, user, date, firestore, formattedDate, recordLoading, recordData]);
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
@@ -152,10 +150,14 @@ export default function PaymentsPage() {
     minimumFractionDigits: 0,
   });
 
-  const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
+  const updatePayments = (payments: Payment[]) => {
     if (!user || !currentRecord) return;
     
-    const newRecord = setter(currentRecord);
+    const newRecord: DailyRecord = {
+      ...currentRecord,
+      payments,
+    }
+    
     const calculatedRecord = recalculateTotals(newRecord) as DailyRecord;
 
     const recordRef = doc(
@@ -264,7 +266,8 @@ export default function PaymentsPage() {
                   </SheetDescription>
                 </SheetHeader>
                 <AddPaymentForm
-                  setRecord={handleSetRecord}
+                  currentRecord={currentRecord}
+                  onAddPayment={updatePayments}
                   setSheetOpen={setIsSheetOpen}
                 />
               </SheetContent>
@@ -280,7 +283,7 @@ export default function PaymentsPage() {
         </div>
         <PaymentsTable
           payments={currentRecord.payments}
-          setRecord={handleSetRecord}
+          onUpdatePayments={updatePayments}
           currencyFormatter={currencyFormatter}
         />
       </main>

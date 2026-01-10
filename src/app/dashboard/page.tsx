@@ -27,9 +27,9 @@ import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
 const recalculateTotals = (
-  recordToCalc: DailyRecord | null | undefined
-): DailyRecord | null | undefined => {
-  if (!recordToCalc) return recordToCalc;
+  recordToCalc: DailyRecord | null
+): DailyRecord | null => {
+  if (!recordToCalc) return null;
 
   const cashSpent = recordToCalc.payments
     .filter((p) => p.paymentMode === 'Cash')
@@ -79,7 +79,7 @@ export default function Dashboard() {
   const { data: recordData, loading: recordLoading } =
     useDoc<DailyRecord>(recordRef);
     
-  const currentRecord = useMemo(() => recalculateTotals(recordData), [recordData]);
+  const currentRecord = useMemo(() => recalculateTotals(recordData || null), [recordData]);
 
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
@@ -89,7 +89,7 @@ export default function Dashboard() {
 
   // Effect to create a new record if one doesn't exist for the selected date
   useEffect(() => {
-    if (userLoading || !user) {
+    if (userLoading || recordLoading || !user) {
       return; 
     }
 
@@ -146,10 +146,7 @@ export default function Dashboard() {
       }
     };
 
-    if (!recordLoading) {
-      initializeRecord();
-    }
-    // The dependency array is crucial. It should only react to changes that identify the document.
+    initializeRecord();
   }, [userLoading, user, date, firestore, formattedDate, recordLoading, recordData]);
 
 
@@ -167,10 +164,20 @@ export default function Dashboard() {
     minimumFractionDigits: 0,
   });
 
-  const handleSetRecord = (setter: (prev: DailyRecord) => DailyRecord) => {
+  const handleSaveBalances = () => {
     if (!user || !currentRecord) return;
+
+    const newRecord: DailyRecord = {
+      ...currentRecord,
+      balances: {
+        ...currentRecord.balances,
+        opening: {
+          account: openingAccount,
+          cash: openingCash,
+        },
+      },
+    };
     
-    const newRecord = setter(currentRecord);
     const calculatedRecord = recalculateTotals(newRecord) as DailyRecord;
 
     const recordRef = doc(
@@ -190,20 +197,6 @@ export default function Dashboard() {
         errorEmitter.emit('permission-error', permissionError);
       }
     );
-  };
-
-
-  const handleSaveBalances = () => {
-    handleSetRecord((prev) => ({
-      ...prev,
-      balances: {
-        ...prev.balances,
-        opening: {
-          account: openingAccount,
-          cash: openingCash,
-        },
-      },
-    }));
 
     setIsEditingBalances(false);
     toast({

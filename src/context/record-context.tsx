@@ -56,8 +56,10 @@ const recalculateTotals = (
 interface RecordContextType {
   record: DailyRecord | null;
   yesterdayRecord: DailyRecord | null;
+  allRecords: { [date: string]: DailyRecord };
   loading: boolean;
   saveRecord: (newRecord: DailyRecord) => void;
+  importRecords: (importedRecords: { [date: string]: DailyRecord }) => void;
 }
 
 const RecordContext = createContext<RecordContextType | undefined>(undefined);
@@ -79,66 +81,62 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   // Load all user records from localStorage when user changes
   useEffect(() => {
-    if (!user) return;
+    if (userLoading) return;
     setLoading(true);
-    const storage = getLocalStorage();
-    if (storage) {
-        const storedData = storage.getItem(`financeflow_records_${user.uid}`);
-        if (storedData) {
-            setAllRecords(JSON.parse(storedData));
-        } else {
-            setAllRecords({});
-        }
+    if(user) {
+      const storage = getLocalStorage();
+      if (storage) {
+          const storedData = storage.getItem(`financeflow_records_${user.uid}`);
+          if (storedData) {
+              setAllRecords(JSON.parse(storedData));
+          } else {
+              setAllRecords({});
+          }
+      }
+    } else {
+        // If no user, clear records
+        setAllRecords({});
     }
     setLoading(false);
-  }, [user]);
+  }, [user, userLoading]);
 
   // Handle creating a new record for the selected date if it doesn't exist
   useEffect(() => {
-    if (!user || userLoading || loading || !formattedDate) return;
+    if (!user || userLoading || loading || !formattedDate || allRecords[formattedDate]) return;
     
-    // Get yesterday's record to calculate opening balance and totals.
+    // Get yesterday's record to calculate opening balance.
     const yesterdayStr = format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
     const yesterdayRecordRaw = allRecords[yesterdayStr];
     
-    if (yesterdayRecordRaw) {
-        const calculatedYesterday = recalculateTotals(yesterdayRecordRaw);
-        setYesterdayRecord(calculatedYesterday);
-    } else {
-        setYesterdayRecord(null);
+    const calculatedYesterday = recalculateTotals(yesterdayRecordRaw);
+    setYesterdayRecord(calculatedYesterday);
+
+    let openingBalances = { account: 0, cash: 0 };
+    if (calculatedYesterday) {
+        openingBalances = calculatedYesterday.balances.closing;
     }
 
-    if (!allRecords[formattedDate]) {
-      let openingBalances = { account: 0, cash: 0 };
+    const newRecord: DailyRecord = {
+      date: formattedDate,
+      balances: {
+        opening: openingBalances,
+        closing: { account: openingBalances.account, cash: openingBalances.cash },
+      },
+      payments: [],
+      totals: { totalSpent: 0, cashSpent: 0, accountSpent: 0 },
+      metadata: { currency: 'INR' },
+    };
 
-      if (yesterdayRecordRaw) {
-        const calculatedYesterday = recalculateTotals(yesterdayRecordRaw);
-        if (calculatedYesterday) {
-          openingBalances = calculatedYesterday.balances.closing;
+    // Use a function for state update to get the latest state
+    setAllRecords(prevRecords => {
+        const updatedRecords = { ...prevRecords, [formattedDate]: newRecord };
+        const storage = getLocalStorage();
+        if (storage && user) {
+            storage.setItem(`financeflow_records_${user.uid}`, JSON.stringify(updatedRecords));
         }
-      }
+        return updatedRecords;
+    });
 
-      const newRecord: DailyRecord = {
-        date: formattedDate,
-        balances: {
-          opening: openingBalances,
-          closing: { account: openingBalances.account, cash: openingBalances.cash },
-        },
-        payments: [],
-        totals: { totalSpent: 0, cashSpent: 0, accountSpent: 0 },
-        metadata: { currency: 'INR' },
-      };
-
-      // Use a function for state update to get the latest state
-      setAllRecords(prevRecords => {
-          const updatedRecords = { ...prevRecords, [formattedDate]: newRecord };
-          const storage = getLocalStorage();
-          if (storage && user) {
-              storage.setItem(`financeflow_records_${user.uid}`, JSON.stringify(updatedRecords));
-          }
-          return updatedRecords;
-      });
-    }
   }, [allRecords, formattedDate, user, userLoading, loading]);
 
   const saveRecord = useCallback(
@@ -162,6 +160,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     [user]
   );
   
+  const importRecords = useCallback((importedRecords: { [date: string]: DailyRecord }) => {
+    if (!user) return;
+    
+    setAllRecords(prevRecords => {
+        const updatedRecords = { ...prevRecords, ...importedRecords };
+        const storage = getLocalStorage();
+        if (storage && user) {
+            storage.setItem(`financeflow_records_${user.uid}`, JSON.stringify(updatedRecords));
+        }
+        return updatedRecords;
+    });
+  }, [user]);
+
   const currentRecord = useMemo(() => {
       return recalculateTotals(allRecords[formattedDate] || null);
   }, [allRecords, formattedDate]);
@@ -172,10 +183,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     () => ({
       record: currentRecord,
       yesterdayRecord: yesterdayRecord,
+      allRecords,
       loading: isLoading,
       saveRecord,
+      importRecords,
     }),
-    [currentRecord, yesterdayRecord, isLoading, saveRecord]
+    [currentRecord, yesterdayRecord, allRecords, isLoading, saveRecord, importRecords]
   );
 
   return (

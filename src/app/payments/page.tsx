@@ -14,12 +14,12 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
   SheetDescription,
 } from '@/components/ui/sheet';
 import { AddPaymentForm } from '@/components/add-payment-form';
 import { useToast } from '@/hooks/use-toast';
 import { useRecord } from '@/context/record-context';
+import { DataManager } from '@/components/data-manager';
 
 export default function PaymentsPage() {
   const { date } = useDate();
@@ -64,7 +64,7 @@ export default function PaymentsPage() {
   };
 
 
-  const handleExport = () => {
+  const handleExportCsv = () => {
     if (!currentRecord) return;
     const csvData = currentRecord.payments.map((p) => ({
       Date: currentRecord.date,
@@ -100,17 +100,6 @@ export default function PaymentsPage() {
         <Header />
         <main className="flex flex-1 items-center justify-center">
           <p>Loading your financial records...</p>
-        </main>
-      </div>
-    );
-  }
-
-  if (!currentRecord) {
-     return (
-      <div className="flex min-h-screen w-full flex-col bg-background">
-        <Header />
-        <main className="flex flex-1 items-center justify-center">
-          <p>Initializing today's record...</p>
         </main>
       </div>
     );
@@ -157,20 +146,34 @@ export default function PaymentsPage() {
               </SheetContent>
             </Sheet>
             <Button
-              onClick={handleExport}
+              onClick={handleExportCsv}
               disabled={!currentRecord || currentRecord.payments.length === 0}
+              variant="outline"
             >
               <Download className="mr-2 h-4 w-4" />
-              Export
+              Export CSV
             </Button>
           </div>
         </div>
-        <PaymentsTable
-          payments={currentRecord.payments}
-          onDeletePayment={handleDeletePayment}
-          onAddWithdrawal={handleAddWithdrawal}
-          currencyFormatter={currencyFormatter}
-        />
+        
+        {currentRecord ? (
+          <PaymentsTable
+            payments={currentRecord.payments}
+            onDeletePayment={handleDeletePayment}
+            onAddWithdrawal={handleAddWithdrawal}
+            currencyFormatter={currencyFormatter}
+          />
+        ) : (
+           <div className="flex items-center justify-center rounded-lg border border-dashed shadow-sm h-96">
+            <div className="text-center">
+              <p className="text-muted-foreground">Initializing today's record...</p>
+            </div>
+          </div>
+        )}
+        
+        <div className="pt-8">
+          <DataManager />
+        </div>
       </main>
     </div>
   );

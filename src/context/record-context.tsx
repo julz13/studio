@@ -88,7 +88,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (storage) {
           const storedData = storage.getItem(`financeflow_records_${user.uid}`);
           if (storedData) {
-              setAllRecords(JSON.parse(storedData));
+              try {
+                setAllRecords(JSON.parse(storedData));
+              } catch (e) {
+                console.error("Failed to parse records from localStorage", e);
+                setAllRecords({}); // Start with empty records if parsing fails
+              }
           } else {
               setAllRecords({});
           }
@@ -176,6 +181,20 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const currentRecord = useMemo(() => {
       return recalculateTotals(allRecords[formattedDate] || null);
   }, [allRecords, formattedDate]);
+
+  const yesterdayDate = useMemo(() => {
+    if (!formattedDate) return null;
+    return format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
+  }, [formattedDate]);
+
+  const yesterdayRecordForCard = useMemo(() => {
+    if (!yesterdayDate) return null;
+    return recalculateTotals(allRecords[yesterdayDate] || null);
+  }, [allRecords, yesterdayDate]);
+  
+  useEffect(() => {
+    setYesterdayRecord(yesterdayRecordForCard);
+  }, [yesterdayRecordForCard]);
   
   const isLoading = userLoading || loading;
 

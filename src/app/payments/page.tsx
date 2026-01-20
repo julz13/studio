@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { DailyRecord, Payment } from '@/lib/types';
+import type { Payment } from '@/lib/types';
 import { Header } from '@/components/header';
 import { PaymentsTable } from '@/components/payments-table';
 import { Button } from '@/components/ui/button';
@@ -33,61 +33,34 @@ export default function PaymentsPage() {
     minimumFractionDigits: 0,
   });
 
-  const handleAddPayment = async (newPayment: Payment) => {
+  const handleAddPayment = (newPayment: Payment) => {
     if (!currentRecord) return;
-    try {
-      const updatedPayments = [...currentRecord.payments, newPayment].sort((a, b) => a.time.localeCompare(b.time));
-      saveRecord({ ...currentRecord, payments: updatedPayments });
-      toast({
-        title: "Payment Added",
-        description: `${newPayment.item} for ${currencyFormatter.format(newPayment.amount)} has been successfully recorded.`,
-      });
-    } catch (error) {
-      console.error("Error adding payment: ", error);
-      toast({
-        variant: "destructive",
-        title: 'Save Failed',
-        description: 'Could not add payment.',
-      });
-    }
+    const updatedPayments = [...currentRecord.payments, newPayment].sort((a, b) => a.time.localeCompare(b.time));
+    saveRecord({ ...currentRecord, payments: updatedPayments });
+    toast({
+      title: "Payment Added",
+      description: `${newPayment.item} for ${currencyFormatter.format(newPayment.amount)} has been successfully recorded.`,
+    });
   };
   
-  const handleAddWithdrawal = async (newWithdrawal: Payment) => {
+  const handleAddWithdrawal = (newWithdrawal: Payment) => {
     if (!currentRecord) return;
-    try {
-      const updatedPayments = [...currentRecord.payments, newWithdrawal].sort((a, b) => a.time.localeCompare(b.time));
-      saveRecord({ ...currentRecord, payments: updatedPayments });
-      toast({
-        title: "Withdrawal Added",
-        description: `A withdrawal of ${currencyFormatter.format(newWithdrawal.amount)} has been successfully recorded.`,
-      });
-    } catch (error) {
-      console.error("Error adding withdrawal: ", error);
-      toast({
-        variant: "destructive",
-        title: 'Save Failed',
-        description: 'Could not add withdrawal.',
-      });
-    }
+    const updatedPayments = [...currentRecord.payments, newWithdrawal].sort((a, b) => a.time.localeCompare(b.time));
+    saveRecord({ ...currentRecord, payments: updatedPayments });
+    toast({
+      title: "Withdrawal Added",
+      description: `A withdrawal of ${currencyFormatter.format(newWithdrawal.amount)} has been successfully recorded.`,
+    });
   };
 
-  const handleDeletePayment = async (paymentId: string) => {
+  const handleDeletePayment = (paymentId: string) => {
     if (!currentRecord) return;
-     try {
-      const updatedPayments = currentRecord.payments.filter((p) => p.id !== paymentId);
+     const updatedPayments = currentRecord.payments.filter((p) => p.id !== paymentId);
       saveRecord({ ...currentRecord, payments: updatedPayments });
       toast({
         title: "Payment Deleted",
         description: `The payment has been removed.`,
       });
-    } catch (error) {
-      console.error("Error deleting payment: ", error);
-      toast({
-        variant: "destructive",
-        title: 'Delete Failed',
-        description: 'Could not delete payment.',
-      });
-    }
   };
 
 

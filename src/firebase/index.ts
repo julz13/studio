@@ -39,3 +39,5 @@ export function initializeFirebase(): {
 
 export * from './provider';
 export * from './auth/use-user';
+export { useCollection } from './firestore/use-collection';
+export { useDoc } from './firestore/use-doc';

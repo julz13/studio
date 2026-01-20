@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import type { DailyRecord } from '@/lib/types';
 import { Header } from '@/components/header';
 import { SummaryCards } from '@/components/summary-cards';
@@ -19,50 +19,16 @@ import { useToast } from '@/hooks/use-toast';
 import { ExpensesChart } from '@/components/expenses-chart';
 import { useDate } from '@/context/date-context';
 import { useRecord } from '@/context/record-context';
-
-const recalculateTotals = (
-  recordToCalc: DailyRecord | null
-): DailyRecord | null => {
-  if (!recordToCalc) return null;
-
-  const cashSpent = recordToCalc.payments
-    .filter((p) => p.paymentMode === 'Cash')
-    .reduce((sum, p) => sum + p.amount, 0);
-  const accountSpent = recordToCalc.payments
-    .filter((p) => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal')
-    .reduce((sum, p) => sum + p.amount, 0);
-  const totalSpent = cashSpent + accountSpent;
-
-  const totalWithdrawals = recordToCalc.payments
-    .filter((p) => p.category === 'Withdrawal')
-    .reduce((sum, p) => sum + p.amount, 0);
-
-  const closingAccount =
-    recordToCalc.balances.opening.account - accountSpent - totalWithdrawals;
-  const closingCash =
-    recordToCalc.balances.opening.cash + totalWithdrawals - cashSpent;
-
-  return {
-    ...recordToCalc,
-    totals: {
-      totalSpent,
-      cashSpent,
-      accountSpent,
-    },
-    balances: {
-      ...recordToCalc.balances,
-      closing: {
-        account: closingAccount,
-        cash: closingCash,
-      },
-    },
-  };
-};
+import { useUser } from '@/firebase/auth/use-user';
+import { useFirestore } from '@/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 export default function Dashboard() {
   const { date } = useDate();
   const { toast } = useToast();
   const { record: currentRecord, loading: recordLoading, saveRecord } = useRecord();
+  const { user } = useUser();
+  const firestore = useFirestore();
 
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
@@ -77,6 +43,45 @@ export default function Dashboard() {
       setOpeningCash(currentRecord.balances.opening.cash);
     }
   }, [currentRecord]);
+
+    // Effect to fetch yesterday's balance for display
+  useEffect(() => {
+    if (!date || !user) return;
+
+    const fetchYesterdayBalance = async () => {
+        const yesterday = subDays(date, 1);
+        const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
+        const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayStr);
+        
+        try {
+            const docSnap = await getDoc(yesterdayRef);
+            if (docSnap.exists()) {
+                const yesterdayRecord = docSnap.data() as DailyRecord;
+                
+                const recalculateTotals = (recordToCalc: DailyRecord | null): DailyRecord | null => {
+                  if (!recordToCalc) return null;
+                  const cashSpent = recordToCalc.payments.filter((p) => p.paymentMode === 'Cash').reduce((sum, p) => sum + p.amount, 0);
+                  const accountSpent = recordToCalc.payments.filter((p) => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
+                  const totalSpent = cashSpent + accountSpent;
+                  const totalWithdrawals = recordToCalc.payments.filter((p) => p.category === 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
+                  const closingAccount = recordToCalc.balances.opening.account - accountSpent - totalWithdrawals;
+                  const closingCash = recordToCalc.balances.opening.cash + totalWithdrawals - cashSpent;
+                  return { ...recordToCalc, totals: { totalSpent, cashSpent, accountSpent }, balances: { ...recordToCalc.balances, closing: { account: closingAccount, cash: closingCash }}};
+                };
+
+                const calculatedRecord = recalculateTotals(yesterdayRecord);
+                setYesterdayBalance(calculatedRecord?.balances.closing ?? null);
+            } else {
+                setYesterdayBalance(null);
+            }
+        } catch (error) {
+            console.error("Error fetching yesterday's balance: ", error);
+            setYesterdayBalance(null);
+        }
+    };
+    
+    fetchYesterdayBalance();
+  }, [date, user, firestore]);
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',

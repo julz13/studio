@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DollarSign, CreditCard, Wallet } from 'lucide-react';
+import { DollarSign, CreditCard, Wallet, Undo } from 'lucide-react';
 
 interface SummaryCardsProps {
   totals: {
@@ -7,12 +7,13 @@ interface SummaryCardsProps {
     cashSpent: number;
     accountSpent: number;
   };
+  yesterdayTotalSpent?: number;
   currencyFormatter: Intl.NumberFormat;
 }
 
-export function SummaryCards({ totals, currencyFormatter }: SummaryCardsProps) {
+export function SummaryCards({ totals, currencyFormatter, yesterdayTotalSpent }: SummaryCardsProps) {
   return (
-    <div className="grid gap-4 md:grid-cols-3 md:gap-8">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Total Spent Today</CardTitle>
@@ -21,6 +22,16 @@ export function SummaryCards({ totals, currencyFormatter }: SummaryCardsProps) {
         <CardContent>
           <div className="text-2xl font-bold">{currencyFormatter.format(totals.totalSpent)}</div>
           <p className="text-xs text-muted-foreground">Summary of all payments for the day</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Total Spent Yesterday</CardTitle>
+          <Undo className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{currencyFormatter.format(yesterdayTotalSpent ?? 0)}</div>
+          <p className="text-xs text-muted-foreground">Summary of all payments for yesterday</p>
         </CardContent>
       </Card>
       <Card>

@@ -23,7 +23,7 @@ import { useRecord } from '@/context/record-context';
 export default function Dashboard() {
   const { date } = useDate();
   const { toast } = useToast();
-  const { record: currentRecord, loading: recordLoading, saveRecord } = useRecord();
+  const { record: currentRecord, yesterdayRecord, loading: recordLoading, saveRecord } = useRecord();
 
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
@@ -109,6 +109,7 @@ export default function Dashboard() {
         </div>
         <SummaryCards
           totals={currentRecord.totals}
+          yesterdayTotalSpent={yesterdayRecord?.totals.totalSpent}
           currencyFormatter={currencyFormatter}
         />
         <div className="grid gap-4 md:gap-8 lg:grid-cols-3">

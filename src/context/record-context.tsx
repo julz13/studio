@@ -55,6 +55,7 @@ const recalculateTotals = (
 
 interface RecordContextType {
   record: DailyRecord | null;
+  yesterdayRecord: DailyRecord | null;
   loading: boolean;
   saveRecord: (newRecord: DailyRecord) => void;
 }
@@ -73,6 +74,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const { user, loading: userLoading } = useUser();
   const { formattedDate } = useDate();
   const [allRecords, setAllRecords] = useState<{ [date: string]: DailyRecord }>({});
+  const [yesterdayRecord, setYesterdayRecord] = useState<DailyRecord | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Load all user records from localStorage when user changes
@@ -94,12 +96,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // Handle creating a new record for the selected date if it doesn't exist
   useEffect(() => {
     if (!user || userLoading || loading || !formattedDate) return;
+    
+    // Get yesterday's record to calculate opening balance and totals.
+    const yesterdayStr = format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
+    const yesterdayRecordRaw = allRecords[yesterdayStr];
+    
+    if (yesterdayRecordRaw) {
+        const calculatedYesterday = recalculateTotals(yesterdayRecordRaw);
+        setYesterdayRecord(calculatedYesterday);
+    } else {
+        setYesterdayRecord(null);
+    }
 
     if (!allRecords[formattedDate]) {
-      // Get yesterday's record to calculate opening balance.
-      const yesterdayStr = format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
-      const yesterdayRecordRaw = allRecords[yesterdayStr];
-      
       let openingBalances = { account: 0, cash: 0 };
 
       if (yesterdayRecordRaw) {
@@ -162,10 +171,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       record: currentRecord,
+      yesterdayRecord: yesterdayRecord,
       loading: isLoading,
       saveRecord,
     }),
-    [currentRecord, isLoading, saveRecord]
+    [currentRecord, yesterdayRecord, isLoading, saveRecord]
   );
 
   return (

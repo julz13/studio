@@ -7,9 +7,6 @@ import { format, parseISO } from 'date-fns';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,7 +17,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { CalendarIcon, Upload, Download as DownloadIcon } from 'lucide-react';
+import { CalendarIcon, Download as DownloadIcon } from 'lucide-react';
 import type { DailyRecord } from '@/lib/types';
 
 export function DataManager() {
@@ -118,14 +115,7 @@ export function DataManager() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="font-headline">Data Management</CardTitle>
-        <CardDescription>
-          Export your data to a JSON file for backup, or import a backup file
-          to restore your data.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 pt-6">
         <div className="space-y-4 rounded-lg border p-4">
           <h3 className="font-semibold">Export Data</h3>
           <p className="text-sm text-muted-foreground">

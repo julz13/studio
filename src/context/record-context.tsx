@@ -11,20 +11,19 @@ import React, {
 import type { DailyRecord } from '@/lib/types';
 import { useDate } from './date-context';
 import { useUser } from '@/firebase/auth/use-user';
-import { format, subDays, parseISO } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { useDoc, useFirestore } from '@/firebase';
 import {
   doc,
   setDoc,
   writeBatch,
-  getDoc,
 } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
 // This function is the single source of truth for all calculations.
 const recalculateTotals = (
-  recordToCalc: DailyRecord | null
+  recordToCalc: DailyRecord | null | undefined
 ): DailyRecord | null => {
   if (!recordToCalc) return null;
 
@@ -74,7 +73,7 @@ const RecordContext = createContext<RecordContextType | undefined>(undefined);
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
   const { user, loading: userLoading } = useUser();
-  const { formattedDate } = useDate();
+  const { date, formattedDate } = useDate();
   const firestore = useFirestore();
 
   // Memoize the document reference for the currently selected date.
@@ -83,8 +82,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     return doc(firestore, 'users', user.uid, 'records', formattedDate);
   }, [user, firestore, formattedDate]);
 
-  // Use the useDoc hook to get the current record. It will be null if it doesn't exist.
+  // Memoize the document reference for yesterday's date.
+  const yesterdayDocRef = useMemo(() => {
+    if (!user || !date) return undefined;
+    const yesterdayStr = format(subDays(date, 1), 'yyyy-MM-dd');
+    return doc(firestore, 'users', user.uid, 'records', yesterdayStr);
+  }, [user, firestore, date]);
+
+
+  // Use the useDoc hook to get the current and yesterday's records.
   const { data: currentRecordData, loading: recordLoading } = useDoc<DailyRecord>(docRef);
+  const { data: yesterdayRecordData, loading: yesterdayRecordLoading } = useDoc<DailyRecord>(yesterdayDocRef);
   
   // The record that the UI will use, after calculations.
   const [record, setRecord] = useState<DailyRecord | null>(null);
@@ -93,68 +101,51 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   // This effect is the core logic engine.
   useEffect(() => {
-    if (recordLoading || userLoading) {
+    if (recordLoading || userLoading || yesterdayRecordLoading) {
       setIsInitializing(true);
       return;
     }
     if (!user || !formattedDate) {
       setRecord(null);
+      setYesterdayRecord(null);
       setIsInitializing(false);
       return;
     }
 
-    const processRecord = async () => {
+    const calculatedYesterday = recalculateTotals(yesterdayRecordData);
+    setYesterdayRecord(calculatedYesterday);
+
+    const processRecord = () => {
       // If a record for today exists in Firestore, use it.
       if (currentRecordData) {
         setRecord(recalculateTotals(currentRecordData));
-        const yesterdayStr = format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
-        const yesterdayDocRef = doc(firestore, 'users', user.uid, 'records', yesterdayStr);
-        const yesterdaySnap = await getDoc(yesterdayDocRef);
-        if (yesterdaySnap.exists()) {
-          setYesterdayRecord(recalculateTotals(yesterdaySnap.data() as DailyRecord));
-        } else {
-          setYesterdayRecord(null);
-        }
-
       } else {
-        // If no record exists for today, fetch yesterday's record to create a new one.
-        const yesterdayStr = format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
-        const yesterdayDocRef = doc(firestore, 'users', user.uid, 'records', yesterdayStr);
+        // If no record exists for today, create a new one based on yesterday's closing balances.
+        const openingBalances = calculatedYesterday?.balances.closing || { account: 0, cash: 0 };
         
-        try {
-            const yesterdaySnap = await getDoc(yesterdayDocRef);
-            const yesterdayRecordData = yesterdaySnap.exists() ? yesterdaySnap.data() as DailyRecord : null;
-            const calculatedYesterday = recalculateTotals(yesterdayRecordData);
-            setYesterdayRecord(calculatedYesterday);
+        const newRecord: DailyRecord = {
+            date: formattedDate,
+            balances: {
+            opening: openingBalances,
+            closing: { account: openingBalances.account, cash: openingBalances.cash },
+            },
+            payments: [],
+            totals: { totalSpent: 0, cashSpent: 0, accountSpent: 0 },
+            metadata: { currency: 'INR' },
+        };
 
-            const openingBalances = calculatedYesterday?.balances.closing || { account: 0, cash: 0 };
-            
-            const newRecord: DailyRecord = {
-                date: formattedDate,
-                balances: {
-                opening: openingBalances,
-                closing: { account: openingBalances.account, cash: openingBalances.cash },
-                },
-                payments: [],
-                totals: { totalSpent: 0, cashSpent: 0, accountSpent: 0 },
-                metadata: { currency: 'INR' },
-            };
+        setRecord(newRecord);
 
-            setRecord(newRecord);
-
-            // Also save this new record to Firestore so it exists for the next time.
-            if(docRef) {
-                setDoc(docRef, newRecord).catch(async (serverError) => {
-                    const permissionError = new FirestorePermissionError({
-                        path: docRef.path,
-                        operation: 'create',
-                        requestResourceData: newRecord,
-                    });
-                    errorEmitter.emit('permission-error', permissionError);
+        // Also save this new record to Firestore so it exists for the next time.
+        if(docRef) {
+            setDoc(docRef, newRecord).catch(async (serverError) => {
+                const permissionError = new FirestorePermissionError({
+                    path: docRef.path,
+                    operation: 'create',
+                    requestResourceData: newRecord,
                 });
-            }
-        } catch (error) {
-            console.error("Error initializing today's record:", error);
+                errorEmitter.emit('permission-error', permissionError);
+            });
         }
       }
       setIsInitializing(false);
@@ -162,7 +153,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
     processRecord();
 
-  }, [currentRecordData, recordLoading, userLoading, user, formattedDate, firestore, docRef]);
+  }, [currentRecordData, yesterdayRecordData, recordLoading, userLoading, yesterdayRecordLoading, user, formattedDate, firestore, docRef]);
 
   const saveRecord = useCallback((newRecordData: DailyRecord) => {
     if (!docRef) return;
@@ -192,13 +183,15 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       batch.set(recordDocRef, recordData, { merge: true });
     });
     
-    await batch.commit().catch(async (serverError) => {
-         const permissionError = new FirestorePermissionError({
+    try {
+        await batch.commit();
+    } catch(e) {
+        const permissionError = new FirestorePermissionError({
             path: `users/${user.uid}/records`,
             operation: 'write', // Batch write is a 'write' operation
         });
         errorEmitter.emit('permission-error', permissionError);
-    });
+    }
 
   }, [user, firestore]);
   

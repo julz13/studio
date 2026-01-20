@@ -149,46 +149,66 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setYesterdayRecord(calculatedYesterday);
 
     const processRecord = () => {
-      // If a record for today exists in Firestore, use it.
-      if (currentRecordData) {
-        setRecord(recalculateTotals(currentRecordData));
-      } else {
-        // If no record exists for today, create a new one.
-        // Use the closing balance from the most recent available record.
-        const lastAvailableRecord = recalculateTotals(lastAvailableRecordData);
-        const openingBalances = lastAvailableRecord?.balances.closing || {
-          account: 0,
-          cash: 0,
-        };
+      // Always use the closing balance from the most recent available record as the source of truth for opening balance.
+      const lastAvailableRecord = recalculateTotals(lastAvailableRecordData);
+      const correctOpeningBalances = lastAvailableRecord?.balances.closing || {
+        account: 0,
+        cash: 0,
+      };
 
-        const newRecord: DailyRecord = {
+      let needsUpdate = false;
+      let recordToProcess: DailyRecord;
+
+      // If a record for today exists in Firestore, use it but verify its opening balance.
+      if (currentRecordData) {
+        recordToProcess = { ...currentRecordData };
+        // Check if the opening balance is stale
+        if (
+          recordToProcess.balances.opening.account !==
+            correctOpeningBalances.account ||
+          recordToProcess.balances.opening.cash !== correctOpeningBalances.cash
+        ) {
+          recordToProcess.balances.opening = correctOpeningBalances;
+          needsUpdate = true; // Mark that this record needs to be re-saved to Firestore
+        }
+      } else {
+        // If no record exists for today, create a new one using the correct opening balance.
+        recordToProcess = {
           date: formattedDate,
           balances: {
-            opening: openingBalances,
+            opening: correctOpeningBalances,
             closing: {
-              account: openingBalances.account,
-              cash: openingBalances.cash,
+              account: correctOpeningBalances.account,
+              cash: correctOpeningBalances.cash,
             },
           },
           payments: [],
           totals: { totalSpent: 0, cashSpent: 0, accountSpent: 0 },
           metadata: { currency: 'INR' },
         };
+        needsUpdate = true; // The new record needs to be saved.
+      }
 
-        setRecord(newRecord);
+      // Recalculate totals and closing balances based on the (potentially updated) record
+      const finalRecord = recalculateTotals(recordToProcess);
 
-        // Also save this new record to Firestore so it exists for the next time.
-        if (docRef) {
-          setDoc(docRef, newRecord).catch(async (serverError) => {
+      // Update the local state for the UI to render
+      setRecord(finalRecord);
+
+      // If the record was new or its opening balance was updated, save it back to Firestore.
+      if (needsUpdate && docRef && finalRecord) {
+        setDoc(docRef, finalRecord, { merge: true }).catch(
+          async (serverError) => {
             const permissionError = new FirestorePermissionError({
               path: docRef.path,
-              operation: 'create',
-              requestResourceData: newRecord,
+              operation: currentRecordData ? 'update' : 'create',
+              requestResourceData: finalRecord,
             });
             errorEmitter.emit('permission-error', permissionError);
-          });
-        }
+          }
+        );
       }
+
       setIsInitializing(false);
     };
 

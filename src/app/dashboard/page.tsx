@@ -89,7 +89,7 @@ export default function Dashboard() {
 
   // Effect to create a new record if one doesn't exist for the selected date
   useEffect(() => {
-    if (userLoading || recordLoading || !user) {
+    if (userLoading || recordLoading || !user || !date) {
       return; 
     }
 
@@ -164,45 +164,51 @@ export default function Dashboard() {
     minimumFractionDigits: 0,
   });
 
-  const handleSaveBalances = () => {
-    if (!user || !currentRecord) return;
-
-    const newRecord: DailyRecord = {
-      ...currentRecord,
-      balances: {
-        ...currentRecord.balances,
-        opening: {
-          account: openingAccount,
-          cash: openingCash,
-        },
-      },
-    };
+  const handleSaveBalances = async () => {
+    if (!user || !recordRef) return;
     
-    const calculatedRecord = recalculateTotals(newRecord) as DailyRecord;
+    try {
+      const docSnap = await getDoc(recordRef);
+      if (docSnap.exists()) {
+        const currentRecord = docSnap.data() as DailyRecord;
+        const newRecord: DailyRecord = {
+          ...currentRecord,
+          balances: {
+            ...currentRecord.balances,
+            opening: {
+              account: openingAccount,
+              cash: openingCash,
+            },
+          },
+        };
 
-    const recordRef = doc(
-      firestore,
-      'users',
-      user.uid,
-      'records',
-      calculatedRecord.date
-    );
-    setDoc(recordRef, calculatedRecord, { merge: true }).catch(
-      (serverError) => {
-        const permissionError = new FirestorePermissionError({
-          path: recordRef.path,
-          operation: 'update',
-          requestResourceData: calculatedRecord,
+        const calculatedRecord = recalculateTotals(newRecord) as DailyRecord;
+
+        setDoc(recordRef, calculatedRecord, { merge: true }).catch(
+          (serverError) => {
+            const permissionError = new FirestorePermissionError({
+              path: recordRef.path,
+              operation: 'update',
+              requestResourceData: calculatedRecord,
+            });
+            errorEmitter.emit('permission-error', permissionError);
+          }
+        );
+        
+        setIsEditingBalances(false);
+        toast({
+          title: 'Balances Updated',
+          description: 'Your opening balances have been saved.',
         });
-        errorEmitter.emit('permission-error', permissionError);
       }
-    );
-
-    setIsEditingBalances(false);
-    toast({
-      title: 'Balances Updated',
-      description: 'Your opening balances have been saved.',
-    });
+    } catch (error) {
+      console.error("Error saving balances:", error);
+      toast({
+        variant: "destructive",
+        title: 'Save Failed',
+        description: 'Could not update balances.',
+      });
+    }
   };
 
   if (userLoading || recordLoading) {

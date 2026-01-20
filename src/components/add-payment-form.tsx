@@ -24,7 +24,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import type { Dispatch, SetStateAction } from "react";
 import type { Payment } from "@/lib/types";
-import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
 const paymentSchema = z.object({
@@ -43,7 +42,6 @@ interface AddPaymentFormProps {
 }
 
 export function AddPaymentForm({ onAddPayment, setSheetOpen }: AddPaymentFormProps) {
-  const { toast } = useToast();
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
@@ -63,12 +61,6 @@ export function AddPaymentForm({ onAddPayment, setSheetOpen }: AddPaymentFormPro
     };
 
     onAddPayment(newPayment);
-
-    toast({
-      title: "Payment Added",
-      description: `${data.item} for ${data.amount} has been successfully recorded.`,
-    });
-    
     setSheetOpen(false);
   }
 

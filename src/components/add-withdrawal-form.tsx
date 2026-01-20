@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { Dispatch, SetStateAction } from "react";
 import type { Payment } from "@/lib/types";
-import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
 const withdrawalSchema = z.object({
@@ -32,7 +31,6 @@ interface AddWithdrawalFormProps {
 }
 
 export function AddWithdrawalForm({ onAddWithdrawal, setSheetOpen }: AddWithdrawalFormProps) {
-  const { toast } = useToast();
   const form = useForm<WithdrawalFormValues>({
     resolver: zodResolver(withdrawalSchema),
     defaultValues: {
@@ -52,12 +50,6 @@ export function AddWithdrawalForm({ onAddWithdrawal, setSheetOpen }: AddWithdraw
     };
 
     onAddWithdrawal(newWithdrawal);
-
-    toast({
-      title: "Withdrawal Added",
-      description: `A withdrawal of ${data.amount} has been successfully recorded.`,
-    });
-    
     setSheetOpen(false);
   }
 

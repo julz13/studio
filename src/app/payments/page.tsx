@@ -25,6 +25,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { AddPaymentForm } from '@/components/add-payment-form';
+import { useToast } from '@/hooks/use-toast';
 
 const recalculateTotals = (
   recordToCalc: DailyRecord | null
@@ -68,6 +69,7 @@ const recalculateTotals = (
 export default function PaymentsPage() {
   const { date, formattedDate } = useDate();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const { toast } = useToast();
 
   const { user, loading: userLoading } = useUser();
   const firestore = useFirestore();
@@ -84,7 +86,7 @@ export default function PaymentsPage() {
 
   // Effect to set initial record or create a new one
   useEffect(() => {
-     if (userLoading || recordLoading || !user) {
+     if (userLoading || recordLoading || !user || !date) {
       return; 
     }
 
@@ -150,11 +152,11 @@ export default function PaymentsPage() {
     minimumFractionDigits: 0,
   });
 
-  const saveRecord = (record: DailyRecord) => {
-    if (!user) return;
-    const calculatedRecord = recalculateTotals(record) as DailyRecord;
+  const saveRecord = (recordToSave: DailyRecord) => {
+    if (!user || !recordRef) return;
+    const calculatedRecord = recalculateTotals(recordToSave);
+    if (!calculatedRecord) return;
 
-    const recordRef = doc(firestore, 'users', user.uid, 'records', calculatedRecord.date);
     setDoc(recordRef, calculatedRecord, { merge: true }).catch((serverError) => {
         const permissionError = new FirestorePermissionError({
             path: recordRef.path,
@@ -165,22 +167,73 @@ export default function PaymentsPage() {
     });
   };
 
-  const handleAddPayment = (newPayment: Payment) => {
-    if (!currentRecord) return;
-    const updatedPayments = [...currentRecord.payments, newPayment].sort((a, b) => a.time.localeCompare(b.time));
-    saveRecord({ ...currentRecord, payments: updatedPayments });
+  const handleAddPayment = async (newPayment: Payment) => {
+    if (!user || !recordRef) return;
+    try {
+      const docSnap = await getDoc(recordRef);
+      if (docSnap.exists()) {
+        const currentData = docSnap.data() as DailyRecord;
+        const updatedPayments = [...currentData.payments, newPayment].sort((a, b) => a.time.localeCompare(b.time));
+        saveRecord({ ...currentData, payments: updatedPayments });
+        toast({
+          title: "Payment Added",
+          description: `${newPayment.item} for ${newPayment.amount} has been successfully recorded.`,
+        });
+      }
+    } catch (error) {
+      console.error("Error adding payment: ", error);
+      toast({
+        variant: "destructive",
+        title: 'Save Failed',
+        description: 'Could not add payment.',
+      });
+    }
   };
   
-  const handleAddWithdrawal = (newWithdrawal: Payment) => {
-    if (!currentRecord) return;
-    const updatedPayments = [...currentRecord.payments, newWithdrawal].sort((a, b) => a.time.localeCompare(b.time));
-    saveRecord({ ...currentRecord, payments: updatedPayments });
+  const handleAddWithdrawal = async (newWithdrawal: Payment) => {
+     if (!user || !recordRef) return;
+    try {
+      const docSnap = await getDoc(recordRef);
+      if (docSnap.exists()) {
+        const currentData = docSnap.data() as DailyRecord;
+        const updatedPayments = [...currentData.payments, newWithdrawal].sort((a, b) => a.time.localeCompare(b.time));
+        saveRecord({ ...currentData, payments: updatedPayments });
+        toast({
+          title: "Withdrawal Added",
+          description: `A withdrawal of ${newWithdrawal.amount} has been successfully recorded.`,
+        });
+      }
+    } catch (error) {
+      console.error("Error adding withdrawal: ", error);
+      toast({
+        variant: "destructive",
+        title: 'Save Failed',
+        description: 'Could not add withdrawal.',
+      });
+    }
   };
 
-  const handleDeletePayment = (paymentId: string) => {
-    if (!currentRecord) return;
-    const updatedPayments = currentRecord.payments.filter((p) => p.id !== paymentId);
-    saveRecord({ ...currentRecord, payments: updatedPayments });
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!user || !recordRef) return;
+     try {
+      const docSnap = await getDoc(recordRef);
+      if (docSnap.exists()) {
+        const currentData = docSnap.data() as DailyRecord;
+        const updatedPayments = currentData.payments.filter((p) => p.id !== paymentId);
+        saveRecord({ ...currentData, payments: updatedPayments });
+        toast({
+          title: "Payment Deleted",
+          description: `The payment has been removed.`,
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting payment: ", error);
+      toast({
+        variant: "destructive",
+        title: 'Delete Failed',
+        description: 'Could not delete payment.',
+      });
+    }
   };
 
 

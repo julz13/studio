@@ -15,6 +15,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
+  SheetTrigger,
 } from '@/components/ui/sheet';
 import { AddPaymentForm } from '@/components/add-payment-form';
 import { useToast } from '@/hooks/use-toast';

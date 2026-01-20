@@ -13,25 +13,27 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Edit, Save, ArrowDown } from 'lucide-react';
-import { format, subDays } from 'date-fns';
+import { format, subDays, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { ExpensesChart } from '@/components/expenses-chart';
 import { useDate } from '@/context/date-context';
 import { useRecord } from '@/context/record-context';
 import { useUser } from '@/firebase/auth/use-user';
+import { useFirestore } from '@/firebase';
+import { getDoc, doc } from 'firebase/firestore';
 
 export default function Dashboard() {
   const { date } = useDate();
   const { toast } = useToast();
   const { record: currentRecord, loading: recordLoading, saveRecord } = useRecord();
   const { user } = useUser();
+  const firestore = useFirestore();
 
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
   const [openingCash, setOpeningCash] = useState(0);
   const [yesterdayBalance, setYesterdayBalance] = useState<{account: number, cash: number} | null>(null);
-
 
   // Effect to update editing fields when record loads
   useEffect(() => {
@@ -41,37 +43,38 @@ export default function Dashboard() {
     }
   }, [currentRecord]);
 
-    // Effect to fetch yesterday's balance for display
+    // Effect to fetch and display yesterday's closing balance for UI purposes only.
   useEffect(() => {
     if (!date || !user) return;
-    
-    if (typeof window === 'undefined') return;
 
-    const yesterday = subDays(date, 1);
-    const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
-    const yesterdayKey = `financeflow-record-${user.uid}-${yesterdayStr}`;
-    const yesterdayData = localStorage.getItem(yesterdayKey);
-    
-    if (yesterdayData) {
-        const yesterdayRecord = JSON.parse(yesterdayData) as DailyRecord;
+    const fetchYesterdayBalance = async () => {
+        const yesterday = subDays(date, 1);
+        const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
+        const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayStr);
         
-        const recalculateTotals = (recordToCalc: DailyRecord | null): DailyRecord | null => {
-          if (!recordToCalc) return null;
-          const cashSpent = recordToCalc.payments.filter((p) => p.paymentMode === 'Cash').reduce((sum, p) => sum + p.amount, 0);
-          const accountSpent = recordToCalc.payments.filter((p) => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
-          const totalSpent = cashSpent + accountSpent;
-          const totalWithdrawals = recordToCalc.payments.filter((p) => p.category === 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
-          const closingAccount = recordToCalc.balances.opening.account - accountSpent - totalWithdrawals;
-          const closingCash = recordToCalc.balances.opening.cash + totalWithdrawals - cashSpent;
-          return { ...recordToCalc, totals: { totalSpent, cashSpent, accountSpent }, balances: { ...recordToCalc.balances, closing: { account: closingAccount, cash: closingCash }}};
-        };
+        try {
+            const docSnap = await getDoc(yesterdayRef);
+            if (docSnap.exists()) {
+                const yesterdayRecord = docSnap.data() as DailyRecord;
+                 const cashSpent = yesterdayRecord.payments.filter((p) => p.paymentMode === 'Cash').reduce((sum, p) => sum + p.amount, 0);
+                 const accountSpent = yesterdayRecord.payments.filter((p) => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
+                 const totalWithdrawals = yesterdayRecord.payments.filter((p) => p.category === 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
+                 const closingAccount = yesterdayRecord.balances.opening.account - accountSpent - totalWithdrawals;
+                 const closingCash = yesterdayRecord.balances.opening.cash + totalWithdrawals - cashSpent;
 
-        const calculatedRecord = recalculateTotals(yesterdayRecord);
-        setYesterdayBalance(calculatedRecord?.balances.closing ?? null);
-    } else {
-        setYesterdayBalance(null);
+                setYesterdayBalance({ account: closingAccount, cash: closingCash });
+            } else {
+                setYesterdayBalance(null);
+            }
+        } catch (error) {
+            console.error("Error fetching yesterday's balance for display:", error);
+            setYesterdayBalance(null);
+        }
     }
-  }, [date, user]);
+
+    fetchYesterdayBalance();
+
+  }, [date, user, firestore, currentRecord]); // Re-run if currentRecord changes to reflect updates
 
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -179,7 +182,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent className="grid gap-6">
-                {yesterdayBalance && (
+                {yesterdayBalance && !isEditingBalances && (
                   <div className="rounded-lg border border-dashed border-green-500 bg-green-50/50 p-3 text-sm text-green-800">
                     <p className="flex items-center font-medium">
                       <ArrowDown className="mr-2 h-4 w-4" />

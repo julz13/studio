@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { Dispatch, SetStateAction } from "react";
-import type { DailyRecord, Payment } from "@/lib/types";
+import type { Payment } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -27,12 +27,11 @@ const withdrawalSchema = z.object({
 type WithdrawalFormValues = z.infer<typeof withdrawalSchema>;
 
 interface AddWithdrawalFormProps {
-  currentRecord: DailyRecord;
-  onAddWithdrawal: (payments: Payment[]) => void;
+  onAddWithdrawal: (withdrawal: Payment) => void;
   setSheetOpen: Dispatch<SetStateAction<boolean>>;
 }
 
-export function AddWithdrawalForm({ currentRecord, onAddWithdrawal, setSheetOpen }: AddWithdrawalFormProps) {
+export function AddWithdrawalForm({ onAddWithdrawal, setSheetOpen }: AddWithdrawalFormProps) {
   const { toast } = useToast();
   const form = useForm<WithdrawalFormValues>({
     resolver: zodResolver(withdrawalSchema),
@@ -52,8 +51,7 @@ export function AddWithdrawalForm({ currentRecord, onAddWithdrawal, setSheetOpen
       paymentMode: "N/A",
     };
 
-    const updatedPayments = [...currentRecord.payments, newWithdrawal].sort((a, b) => a.time.localeCompare(b.time));
-    onAddWithdrawal(updatedPayments);
+    onAddWithdrawal(newWithdrawal);
 
     toast({
       title: "Withdrawal Added",

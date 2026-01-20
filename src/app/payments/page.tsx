@@ -84,12 +84,12 @@ export default function PaymentsPage() {
 
   // Effect to set initial record or create a new one
   useEffect(() => {
-    if (userLoading || recordLoading || !user) {
-      return;
+     if (userLoading || recordLoading || !user) {
+      return; 
     }
 
     const initializeRecord = async () => {
-      if (recordData === null) { // Only create if loading is done and data is confirmed null
+      if (recordData === null) { 
         const yesterday = subDays(date, 1);
         const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
         const yesterdayRef = doc(
@@ -150,34 +150,39 @@ export default function PaymentsPage() {
     minimumFractionDigits: 0,
   });
 
-  const updatePayments = (payments: Payment[]) => {
-    if (!user || !currentRecord) return;
-    
-    const newRecord: DailyRecord = {
-      ...currentRecord,
-      payments,
-    }
-    
-    const calculatedRecord = recalculateTotals(newRecord) as DailyRecord;
+  const saveRecord = (record: DailyRecord) => {
+    if (!user) return;
+    const calculatedRecord = recalculateTotals(record) as DailyRecord;
 
-    const recordRef = doc(
-      firestore,
-      'users',
-      user.uid,
-      'records',
-      calculatedRecord.date
-    );
-    setDoc(recordRef, calculatedRecord, { merge: true }).catch(
-      (serverError) => {
+    const recordRef = doc(firestore, 'users', user.uid, 'records', calculatedRecord.date);
+    setDoc(recordRef, calculatedRecord, { merge: true }).catch((serverError) => {
         const permissionError = new FirestorePermissionError({
-          path: recordRef.path,
-          operation: 'update',
-          requestResourceData: calculatedRecord,
+            path: recordRef.path,
+            operation: 'update',
+            requestResourceData: calculatedRecord,
         });
         errorEmitter.emit('permission-error', permissionError);
-      }
-    );
+    });
   };
+
+  const handleAddPayment = (newPayment: Payment) => {
+    if (!currentRecord) return;
+    const updatedPayments = [...currentRecord.payments, newPayment].sort((a, b) => a.time.localeCompare(b.time));
+    saveRecord({ ...currentRecord, payments: updatedPayments });
+  };
+  
+  const handleAddWithdrawal = (newWithdrawal: Payment) => {
+    if (!currentRecord) return;
+    const updatedPayments = [...currentRecord.payments, newWithdrawal].sort((a, b) => a.time.localeCompare(b.time));
+    saveRecord({ ...currentRecord, payments: updatedPayments });
+  };
+
+  const handleDeletePayment = (paymentId: string) => {
+    if (!currentRecord) return;
+    const updatedPayments = currentRecord.payments.filter((p) => p.id !== paymentId);
+    saveRecord({ ...currentRecord, payments: updatedPayments });
+  };
+
 
   const handleExport = () => {
     if (!currentRecord) return;
@@ -266,8 +271,7 @@ export default function PaymentsPage() {
                   </SheetDescription>
                 </SheetHeader>
                 <AddPaymentForm
-                  currentRecord={currentRecord}
-                  onAddPayment={updatePayments}
+                  onAddPayment={handleAddPayment}
                   setSheetOpen={setIsSheetOpen}
                 />
               </SheetContent>
@@ -283,7 +287,8 @@ export default function PaymentsPage() {
         </div>
         <PaymentsTable
           payments={currentRecord.payments}
-          onUpdatePayments={updatePayments}
+          onDeletePayment={handleDeletePayment}
+          onAddWithdrawal={handleAddWithdrawal}
           currencyFormatter={currencyFormatter}
         />
       </main>

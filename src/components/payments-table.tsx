@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from 'react';
+import { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -18,8 +18,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Banknote, Trash2 } from 'lucide-react';
-import type { DailyRecord, Payment } from '@/lib/types';
+import { MoreHorizontal, Banknote } from 'lucide-react';
+import type { Payment } from '@/lib/types';
 import { AddWithdrawalForm } from './add-withdrawal-form';
 import {
   Sheet,
@@ -44,17 +44,13 @@ import {
 
 interface PaymentsTableProps {
   payments: Payment[];
-  onUpdatePayments: (payments: Payment[]) => void;
+  onDeletePayment: (paymentId: string) => void;
+  onAddWithdrawal: (withdrawal: Payment) => void;
   currencyFormatter: Intl.NumberFormat;
 }
 
-export function PaymentsTable({ payments, onUpdatePayments, currencyFormatter }: PaymentsTableProps) {
+export function PaymentsTable({ payments, onDeletePayment, onAddWithdrawal, currencyFormatter }: PaymentsTableProps) {
   const [isWithdrawSheetOpen, setIsWithdrawSheetOpen] = useState(false);
-
-  const handleDelete = (paymentId: string) => {
-    const updatedPayments = payments.filter((p) => p.id !== paymentId);
-    onUpdatePayments(updatedPayments);
-  }
 
   return (
     <Card>
@@ -83,8 +79,7 @@ export function PaymentsTable({ payments, onUpdatePayments, currencyFormatter }:
                 </SheetDescription>
               </SheetHeader>
               <AddWithdrawalForm 
-                currentRecord={{ payments } as DailyRecord} 
-                onAddWithdrawal={onUpdatePayments} 
+                onAddWithdrawal={onAddWithdrawal} 
                 setSheetOpen={setIsWithdrawSheetOpen} 
               />
             </SheetContent>
@@ -155,7 +150,7 @@ export function PaymentsTable({ payments, onUpdatePayments, currencyFormatter }:
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(payment.id)}>Delete</AlertDialogAction>
+                          <AlertDialogAction onClick={() => onDeletePayment(payment.id)}>Delete</AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>

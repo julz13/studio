@@ -23,7 +23,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import type { Dispatch, SetStateAction } from "react";
-import type { DailyRecord, Payment } from "@/lib/types";
+import type { Payment } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -38,12 +38,11 @@ const paymentSchema = z.object({
 type PaymentFormValues = z.infer<typeof paymentSchema>;
 
 interface AddPaymentFormProps {
-  currentRecord: DailyRecord;
-  onAddPayment: (payments: Payment[]) => void;
+  onAddPayment: (payment: Payment) => void;
   setSheetOpen: Dispatch<SetStateAction<boolean>>;
 }
 
-export function AddPaymentForm({ currentRecord, onAddPayment, setSheetOpen }: AddPaymentFormProps) {
+export function AddPaymentForm({ onAddPayment, setSheetOpen }: AddPaymentFormProps) {
   const { toast } = useToast();
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
@@ -63,8 +62,7 @@ export function AddPaymentForm({ currentRecord, onAddPayment, setSheetOpen }: Ad
       time: format(new Date(), "HH:mm"),
     };
 
-    const updatedPayments = [...currentRecord.payments, newPayment].sort((a, b) => a.time.localeCompare(b.time));
-    onAddPayment(updatedPayments);
+    onAddPayment(newPayment);
 
     toast({
       title: "Payment Added",

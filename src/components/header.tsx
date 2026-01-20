@@ -68,6 +68,7 @@ export function Header({ setRecord }: HeaderProps) {
     { href: '/', label: 'Dashboard' },
     { href: '/payments', label: 'Payments' },
     { href: '/reports', label: 'Reports' },
+    { href: '/data', label: 'Data Management' },
   ];
 
   return (

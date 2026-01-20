@@ -20,7 +20,6 @@ import {
 import { AddPaymentForm } from '@/components/add-payment-form';
 import { useToast } from '@/hooks/use-toast';
 import { useRecord } from '@/context/record-context';
-import { DataManager } from '@/components/data-manager';
 
 export default function PaymentsPage() {
   const { date } = useDate();
@@ -171,10 +170,6 @@ export default function PaymentsPage() {
             </div>
           </div>
         )}
-        
-        <div className="pt-8">
-          <DataManager />
-        </div>
       </main>
     </div>
   );

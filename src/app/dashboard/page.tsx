@@ -17,14 +17,8 @@ import { format, subDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { ExpensesChart } from '@/components/expenses-chart';
-import { mockDailyRecord } from '@/lib/data';
-import { useUser } from '@/firebase/auth/use-user';
-import { useDoc } from '@/firebase/firestore/use-doc';
-import { useFirestore } from '@/firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useDate } from '@/context/date-context';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
+import { useRecord } from '@/context/record-context';
 
 const recalculateTotals = (
   recordToCalc: DailyRecord | null
@@ -66,88 +60,14 @@ const recalculateTotals = (
 };
 
 export default function Dashboard() {
-  const { date, formattedDate } = useDate();
+  const { date } = useDate();
   const { toast } = useToast();
-  const { user, loading: userLoading } = useUser();
-  const firestore = useFirestore();
-
-  const recordRef = useMemo(() => {
-    if (!user) return undefined;
-    return doc(firestore, 'users', user.uid, 'records', formattedDate);
-  }, [user, firestore, formattedDate]);
-
-  const { data: recordData, loading: recordLoading } =
-    useDoc<DailyRecord>(recordRef);
-    
-  const currentRecord = useMemo(() => recalculateTotals(recordData || null), [recordData]);
+  const { record: currentRecord, loading: recordLoading, saveRecord } = useRecord();
 
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
   const [openingCash, setOpeningCash] = useState(0);
   const [yesterdayBalance, setYesterdayBalance] = useState<{account: number, cash: number} | null>(null);
-
-
-  // Effect to create a new record if one doesn't exist for the selected date
-  useEffect(() => {
-    if (userLoading || recordLoading || !user || !date) {
-      return; 
-    }
-
-    const initializeRecord = async () => {
-      if (recordData === null) { // Only create if loading is done and data is confirmed null
-        const yesterday = subDays(date, 1);
-        const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
-        const yesterdayRef = doc(
-          firestore,
-          'users',
-          user.uid,
-          'records',
-          yesterdayStr
-        );
-
-        let opening = { account: 0, cash: 0 };
-        try {
-          const yesterdaySnap = await getDoc(yesterdayRef);
-          if (yesterdaySnap.exists()) {
-            const yesterdayData = yesterdaySnap.data() as DailyRecord;
-            const calculatedYesterday = recalculateTotals(yesterdayData);
-            if (calculatedYesterday) {
-                 opening = calculatedYesterday.balances.closing;
-                 setYesterdayBalance(opening);
-            }
-          } else {
-            setYesterdayBalance(null);
-          }
-        } catch (e) {
-          console.error("Could not fetch yesterday's record", e);
-          setYesterdayBalance(null);
-        }
-
-        const newRecord: DailyRecord = {
-          ...mockDailyRecord,
-          date: formattedDate,
-          balances: {
-            ...mockDailyRecord.balances,
-            opening: opening,
-          },
-        };
-        
-        const newRecordRef = doc(firestore, 'users', user.uid, 'records', formattedDate);
-        setDoc(newRecordRef, newRecord).catch((serverError) => {
-          const permissionError = new FirestorePermissionError({
-            path: newRecordRef.path,
-            operation: 'create',
-            requestResourceData: newRecord,
-          });
-          errorEmitter.emit('permission-error', permissionError);
-        });
-      } else if (recordData) {
-         setYesterdayBalance(null); 
-      }
-    };
-
-    initializeRecord();
-  }, [userLoading, user, date, firestore, formattedDate, recordLoading, recordData]);
 
 
   // Effect to update editing fields when record loads
@@ -164,54 +84,29 @@ export default function Dashboard() {
     minimumFractionDigits: 0,
   });
 
-  const handleSaveBalances = async () => {
-    if (!user || !recordRef) return;
+  const handleSaveBalances = () => {
+    if (!currentRecord) return;
     
-    try {
-      const docSnap = await getDoc(recordRef);
-      if (docSnap.exists()) {
-        const currentRecord = docSnap.data() as DailyRecord;
-        const newRecord: DailyRecord = {
-          ...currentRecord,
-          balances: {
-            ...currentRecord.balances,
-            opening: {
-              account: openingAccount,
-              cash: openingCash,
-            },
-          },
-        };
-
-        const calculatedRecord = recalculateTotals(newRecord) as DailyRecord;
-
-        setDoc(recordRef, calculatedRecord, { merge: true }).catch(
-          (serverError) => {
-            const permissionError = new FirestorePermissionError({
-              path: recordRef.path,
-              operation: 'update',
-              requestResourceData: calculatedRecord,
-            });
-            errorEmitter.emit('permission-error', permissionError);
-          }
-        );
-        
-        setIsEditingBalances(false);
-        toast({
-          title: 'Balances Updated',
-          description: 'Your opening balances have been saved.',
-        });
-      }
-    } catch (error) {
-      console.error("Error saving balances:", error);
-      toast({
-        variant: "destructive",
-        title: 'Save Failed',
-        description: 'Could not update balances.',
-      });
-    }
+    const newRecord: DailyRecord = {
+      ...currentRecord,
+      balances: {
+        ...currentRecord.balances,
+        opening: {
+          account: openingAccount,
+          cash: openingCash,
+        },
+      },
+    };
+    
+    saveRecord(newRecord);
+    setIsEditingBalances(false);
+    toast({
+      title: 'Balances Updated',
+      description: 'Your opening balances have been saved.',
+    });
   };
 
-  if (userLoading || recordLoading) {
+  if (recordLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
         <Header />

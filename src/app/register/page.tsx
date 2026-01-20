@@ -21,14 +21,11 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { useAuth, useFirestore } from '@/firebase';
+import { useAuth } from '@/firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
 
 const registerSchema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters.'),
@@ -41,7 +38,6 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const auth = useAuth();
-  const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -64,34 +60,19 @@ export default function RegisterPage() {
       );
       const user = userCredential.user;
 
-      // Redirect immediately after successful creation.
-      router.push('/');
+      // Update the user's profile
+      await updateProfile(user, {
+        displayName: data.displayName,
+      });
 
       toast({
         title: 'Registration Successful',
         description: 'Your account has been created.',
       });
 
-      // Don't await these promises. Let them run in the background.
-      updateProfile(user, {
-        displayName: data.displayName,
-      });
+      // Redirect to home page after everything is done
+      router.push('/');
 
-      const userDocRef = doc(firestore, 'users', user.uid);
-      const userProfileData = {
-        uid: user.uid,
-        email: user.email,
-        displayName: data.displayName,
-      };
-
-      setDoc(userDocRef, userProfileData).catch((serverError) => {
-        const permissionError = new FirestorePermissionError({
-          path: userDocRef.path,
-          operation: 'create',
-          requestResourceData: userProfileData,
-        });
-        errorEmitter.emit('permission-error', permissionError);
-      });
     } catch (error: any) {
       console.error('Registration failed:', error);
       toast({
@@ -102,9 +83,9 @@ export default function RegisterPage() {
             ? 'This email is already registered.'
             : 'An unexpected error occurred.',
       });
-      setLoading(false);
+    } finally {
+        setLoading(false);
     }
-    // No finally block, loading is handled in success/error cases.
   };
 
   return (

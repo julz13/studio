@@ -19,14 +19,27 @@ import {
 import { Calendar } from '@/components/ui/calendar';
 import { CalendarIcon, Download as DownloadIcon } from 'lucide-react';
 import type { DailyRecord } from '@/lib/types';
+import { useUser } from '@/firebase/auth/use-user';
+import { useFirestore } from '@/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 export function DataManager() {
-  const { allRecords, importRecords } = useRecord();
+  const { importRecords } = useRecord();
+  const { user } = useUser();
+  const firestore = useFirestore();
   const { toast } = useToast();
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
 
-  const handleJsonExport = () => {
+  const handleJsonExport = async () => {
+    if (!user) {
+       toast({
+        variant: 'destructive',
+        title: 'Authentication Required',
+        description: 'You must be logged in to export data.',
+      });
+      return;
+    }
     if (!startDate || !endDate) {
       toast({
         variant: 'destructive',
@@ -46,36 +59,47 @@ export function DataManager() {
     }
 
     const recordsToExport: { [date: string]: DailyRecord } = {};
-    Object.keys(allRecords).forEach((dateStr) => {
-      try {
-        const recordDate = parseISO(dateStr);
-        if (recordDate >= startDate && recordDate <= endDate) {
-          recordsToExport[dateStr] = allRecords[dateStr];
-        }
-      } catch (e) {
-        // Ignore invalid date strings in keys
-      }
-    });
+    
+    const recordsRef = collection(firestore, 'users', user.uid, 'records');
+    const q = query(
+      recordsRef,
+      where('date', '>=', format(startDate, 'yyyy-MM-dd')),
+      where('date', '<=', format(endDate, 'yyyy-MM-dd'))
+    );
 
-    if (Object.keys(recordsToExport).length === 0) {
-      toast({
-        title: 'No Data Found',
-        description: 'There is no data in the selected date range to export.',
+    try {
+      const querySnapshot = await getDocs(q);
+      querySnapshot.forEach((doc) => {
+        recordsToExport[doc.id] = doc.data() as DailyRecord;
       });
-      return;
-    }
 
-    const jsonString = JSON.stringify(recordsToExport, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `financeflow-backup-${format(
-      startDate,
-      'yyyy-MM-dd'
-    )}-to-${format(endDate, 'yyyy-MM-dd')}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      if (Object.keys(recordsToExport).length === 0) {
+        toast({
+          title: 'No Data Found',
+          description: 'There is no data in the selected date range to export.',
+        });
+        return;
+      }
+
+      const jsonString = JSON.stringify(recordsToExport, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `financeflow-backup-${format(
+        startDate,
+        'yyyy-MM-dd'
+      )}-to-${format(endDate, 'yyyy-MM-dd')}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Export failed: ", error);
+       toast({
+        variant: 'destructive',
+        title: 'Export Failed',
+        description: 'Could not fetch records from the database. Please check your connection and permissions.',
+      });
+    }
   };
 
   const handleJsonImport = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -97,7 +121,7 @@ export function DataManager() {
         importRecords(importedData);
         toast({
           title: 'Import Successful',
-          description: 'Your data has been imported and merged.',
+          description: 'Your data has been submitted for import.',
         });
         // Reset the file input so the same file can be uploaded again if needed
         event.target.value = '';
@@ -155,7 +179,7 @@ export function DataManager() {
           <h3 className="font-semibold">Import Data</h3>
           <p className="text-sm text-muted-foreground">
             Upload a JSON backup file. This will merge the imported records
-            with your existing data.
+            with your existing data in the database.
           </p>
           <div className="flex items-center gap-4">
              <Label htmlFor="import-file" className="sr-only">Import File</Label>

@@ -12,6 +12,15 @@ import type { DailyRecord } from '@/lib/types';
 import { useDate } from './date-context';
 import { useUser } from '@/firebase/auth/use-user';
 import { format, subDays, parseISO } from 'date-fns';
+import { useDoc, useFirestore } from '@/firebase';
+import {
+  doc,
+  setDoc,
+  writeBatch,
+  getDoc,
+} from 'firebase/firestore';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 // This function is the single source of truth for all calculations.
 const recalculateTotals = (
@@ -56,7 +65,6 @@ const recalculateTotals = (
 interface RecordContextType {
   record: DailyRecord | null;
   yesterdayRecord: DailyRecord | null;
-  allRecords: { [date: string]: DailyRecord };
   loading: boolean;
   saveRecord: (newRecord: DailyRecord) => void;
   importRecords: (importedRecords: { [date: string]: DailyRecord }) => void;
@@ -64,150 +72,147 @@ interface RecordContextType {
 
 const RecordContext = createContext<RecordContextType | undefined>(undefined);
 
-// A wrapper to safely access localStorage on the client side.
-const getLocalStorage = () => {
-    if (typeof window !== 'undefined') {
-        return window.localStorage;
-    }
-    return null;
-}
-
 export function RecordProvider({ children }: { children: React.ReactNode }) {
   const { user, loading: userLoading } = useUser();
   const { formattedDate } = useDate();
-  const [allRecords, setAllRecords] = useState<{ [date: string]: DailyRecord }>({});
+  const firestore = useFirestore();
+
+  // Memoize the document reference for the currently selected date.
+  const docRef = useMemo(() => {
+    if (!user || !formattedDate) return undefined;
+    return doc(firestore, 'users', user.uid, 'records', formattedDate);
+  }, [user, firestore, formattedDate]);
+
+  // Use the useDoc hook to get the current record. It will be null if it doesn't exist.
+  const { data: currentRecordData, loading: recordLoading } = useDoc<DailyRecord>(docRef);
+  
+  // The record that the UI will use, after calculations.
+  const [record, setRecord] = useState<DailyRecord | null>(null);
   const [yesterdayRecord, setYesterdayRecord] = useState<DailyRecord | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  // Load all user records from localStorage when user changes
+  // This effect is the core logic engine.
   useEffect(() => {
-    if (userLoading) return;
-    setLoading(true);
-    if(user) {
-      const storage = getLocalStorage();
-      if (storage) {
-          const storedData = storage.getItem(`financeflow_records_${user.uid}`);
-          if (storedData) {
-              try {
-                setAllRecords(JSON.parse(storedData));
-              } catch (e) {
-                console.error("Failed to parse records from localStorage", e);
-                setAllRecords({}); // Start with empty records if parsing fails
-              }
-          } else {
-              setAllRecords({});
-          }
+    if (recordLoading || userLoading) {
+      setIsInitializing(true);
+      return;
+    }
+    if (!user || !formattedDate) {
+      setRecord(null);
+      setIsInitializing(false);
+      return;
+    }
+
+    const processRecord = async () => {
+      // If a record for today exists in Firestore, use it.
+      if (currentRecordData) {
+        setRecord(recalculateTotals(currentRecordData));
+        const yesterdayStr = format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
+        const yesterdayDocRef = doc(firestore, 'users', user.uid, 'records', yesterdayStr);
+        const yesterdaySnap = await getDoc(yesterdayDocRef);
+        if (yesterdaySnap.exists()) {
+          setYesterdayRecord(recalculateTotals(yesterdaySnap.data() as DailyRecord));
+        } else {
+          setYesterdayRecord(null);
+        }
+
+      } else {
+        // If no record exists for today, fetch yesterday's record to create a new one.
+        const yesterdayStr = format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
+        const yesterdayDocRef = doc(firestore, 'users', user.uid, 'records', yesterdayStr);
+        
+        try {
+            const yesterdaySnap = await getDoc(yesterdayDocRef);
+            const yesterdayRecordData = yesterdaySnap.exists() ? yesterdaySnap.data() as DailyRecord : null;
+            const calculatedYesterday = recalculateTotals(yesterdayRecordData);
+            setYesterdayRecord(calculatedYesterday);
+
+            const openingBalances = calculatedYesterday?.balances.closing || { account: 0, cash: 0 };
+            
+            const newRecord: DailyRecord = {
+                date: formattedDate,
+                balances: {
+                opening: openingBalances,
+                closing: { account: openingBalances.account, cash: openingBalances.cash },
+                },
+                payments: [],
+                totals: { totalSpent: 0, cashSpent: 0, accountSpent: 0 },
+                metadata: { currency: 'INR' },
+            };
+
+            setRecord(newRecord);
+
+            // Also save this new record to Firestore so it exists for the next time.
+            if(docRef) {
+                setDoc(docRef, newRecord).catch(async (serverError) => {
+                    const permissionError = new FirestorePermissionError({
+                        path: docRef.path,
+                        operation: 'create',
+                        requestResourceData: newRecord,
+                    });
+                    errorEmitter.emit('permission-error', permissionError);
+                });
+            }
+        } catch (error) {
+            console.error("Error initializing today's record:", error);
+        }
       }
-    } else {
-        // If no user, clear records
-        setAllRecords({});
-    }
-    setLoading(false);
-  }, [user, userLoading]);
-
-  // Handle creating a new record for the selected date if it doesn't exist
-  useEffect(() => {
-    if (!user || userLoading || loading || !formattedDate || allRecords[formattedDate]) return;
-    
-    // Get yesterday's record to calculate opening balance.
-    const yesterdayStr = format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
-    const yesterdayRecordRaw = allRecords[yesterdayStr];
-    
-    const calculatedYesterday = recalculateTotals(yesterdayRecordRaw);
-    setYesterdayRecord(calculatedYesterday);
-
-    let openingBalances = { account: 0, cash: 0 };
-    if (calculatedYesterday) {
-        openingBalances = calculatedYesterday.balances.closing;
-    }
-
-    const newRecord: DailyRecord = {
-      date: formattedDate,
-      balances: {
-        opening: openingBalances,
-        closing: { account: openingBalances.account, cash: openingBalances.cash },
-      },
-      payments: [],
-      totals: { totalSpent: 0, cashSpent: 0, accountSpent: 0 },
-      metadata: { currency: 'INR' },
+      setIsInitializing(false);
     };
 
-    // Use a function for state update to get the latest state
-    setAllRecords(prevRecords => {
-        const updatedRecords = { ...prevRecords, [formattedDate]: newRecord };
-        const storage = getLocalStorage();
-        if (storage && user) {
-            storage.setItem(`financeflow_records_${user.uid}`, JSON.stringify(updatedRecords));
-        }
-        return updatedRecords;
-    });
+    processRecord();
 
-  }, [allRecords, formattedDate, user, userLoading, loading]);
+  }, [currentRecordData, recordLoading, userLoading, user, formattedDate, firestore, docRef]);
 
-  const saveRecord = useCallback(
-    (newRecordData: DailyRecord) => {
-      if (!user) return;
-      
-      const calculatedRecord = recalculateTotals(newRecordData);
-      if (calculatedRecord) {
-        const dateKey = calculatedRecord.date;
-        
-        setAllRecords(prevRecords => {
-            const updatedRecords = { ...prevRecords, [dateKey]: calculatedRecord };
-            const storage = getLocalStorage();
-            if (storage && user) {
-                storage.setItem(`financeflow_records_${user.uid}`, JSON.stringify(updatedRecords));
-            }
-            return updatedRecords;
+  const saveRecord = useCallback((newRecordData: DailyRecord) => {
+    if (!docRef) return;
+    const calculatedRecord = recalculateTotals(newRecordData);
+    if (calculatedRecord) {
+        // Optimistically update local state for instant UI feedback
+        setRecord(calculatedRecord);
+        // Persist to Firestore
+        setDoc(docRef, calculatedRecord, { merge: true }).catch(async (serverError) => {
+            const permissionError = new FirestorePermissionError({
+                path: docRef.path,
+                operation: 'update',
+                requestResourceData: calculatedRecord,
+            });
+            errorEmitter.emit('permission-error', permissionError);
+            // Optionally, revert optimistic update on error
         });
-      }
-    },
-    [user]
-  );
+    }
+  }, [docRef]);
   
-  const importRecords = useCallback((importedRecords: { [date: string]: DailyRecord }) => {
-    if (!user) return;
+  const importRecords = useCallback(async (importedRecords: { [date: string]: DailyRecord }) => {
+    if (!user || !firestore) return;
     
-    setAllRecords(prevRecords => {
-        const updatedRecords = { ...prevRecords, ...importedRecords };
-        const storage = getLocalStorage();
-        if (storage && user) {
-            storage.setItem(`financeflow_records_${user.uid}`, JSON.stringify(updatedRecords));
-        }
-        return updatedRecords;
+    const batch = writeBatch(firestore);
+    Object.entries(importedRecords).forEach(([dateKey, recordData]) => {
+      const recordDocRef = doc(firestore, `users/${user.uid}/records/${dateKey}`);
+      batch.set(recordDocRef, recordData, { merge: true });
     });
-  }, [user]);
+    
+    await batch.commit().catch(async (serverError) => {
+         const permissionError = new FirestorePermissionError({
+            path: `users/${user.uid}/records`,
+            operation: 'write', // Batch write is a 'write' operation
+        });
+        errorEmitter.emit('permission-error', permissionError);
+    });
 
-  const currentRecord = useMemo(() => {
-      return recalculateTotals(allRecords[formattedDate] || null);
-  }, [allRecords, formattedDate]);
-
-  const yesterdayDate = useMemo(() => {
-    if (!formattedDate) return null;
-    return format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
-  }, [formattedDate]);
-
-  const yesterdayRecordForCard = useMemo(() => {
-    if (!yesterdayDate) return null;
-    return recalculateTotals(allRecords[yesterdayDate] || null);
-  }, [allRecords, yesterdayDate]);
+  }, [user, firestore]);
   
-  useEffect(() => {
-    setYesterdayRecord(yesterdayRecordForCard);
-  }, [yesterdayRecordForCard]);
-  
-  const isLoading = userLoading || loading;
+  const isLoading = userLoading || isInitializing;
 
   const value = useMemo(
     () => ({
-      record: currentRecord,
+      record,
       yesterdayRecord: yesterdayRecord,
-      allRecords,
       loading: isLoading,
       saveRecord,
       importRecords,
     }),
-    [currentRecord, yesterdayRecord, allRecords, isLoading, saveRecord, importRecords]
+    [record, yesterdayRecord, isLoading, saveRecord, importRecords]
   );
 
   return (

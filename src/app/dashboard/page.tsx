@@ -12,70 +12,34 @@ import {
   CardDescription,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Edit, Save, ArrowDown } from 'lucide-react';
-import { format, subDays, parseISO } from 'date-fns';
+import { Edit, Save } from 'lucide-react';
+import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { ExpensesChart } from '@/components/expenses-chart';
 import { useDate } from '@/context/date-context';
 import { useRecord } from '@/context/record-context';
-import { useUser } from '@/firebase/auth/use-user';
-import { useFirestore } from '@/firebase';
-import { getDoc, doc } from 'firebase/firestore';
 
 export default function Dashboard() {
   const { date } = useDate();
   const { toast } = useToast();
   const { record: currentRecord, loading: recordLoading, saveRecord } = useRecord();
-  const { user } = useUser();
-  const firestore = useFirestore();
 
   const [isEditingBalances, setIsEditingBalances] = useState(false);
   const [openingAccount, setOpeningAccount] = useState(0);
   const [openingCash, setOpeningCash] = useState(0);
-  const [yesterdayBalance, setYesterdayBalance] = useState<{account: number, cash: number} | null>(null);
 
-  // Effect to update editing fields when record loads
+  // Effect to update local editing state when the record from the context changes
   useEffect(() => {
     if (currentRecord) {
       setOpeningAccount(currentRecord.balances.opening.account);
       setOpeningCash(currentRecord.balances.opening.cash);
+    } else {
+      setOpeningAccount(0);
+      setOpeningCash(0);
     }
   }, [currentRecord]);
-
-    // Effect to fetch and display yesterday's closing balance for UI purposes only.
-  useEffect(() => {
-    if (!date || !user) return;
-
-    const fetchYesterdayBalance = async () => {
-        const yesterday = subDays(date, 1);
-        const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
-        const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayStr);
-        
-        try {
-            const docSnap = await getDoc(yesterdayRef);
-            if (docSnap.exists()) {
-                const yesterdayRecord = docSnap.data() as DailyRecord;
-                 const cashSpent = yesterdayRecord.payments.filter((p) => p.paymentMode === 'Cash').reduce((sum, p) => sum + p.amount, 0);
-                 const accountSpent = yesterdayRecord.payments.filter((p) => p.paymentMode !== 'Cash' && p.category !== 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
-                 const totalWithdrawals = yesterdayRecord.payments.filter((p) => p.category === 'Withdrawal').reduce((sum, p) => sum + p.amount, 0);
-                 const closingAccount = yesterdayRecord.balances.opening.account - accountSpent - totalWithdrawals;
-                 const closingCash = yesterdayRecord.balances.opening.cash + totalWithdrawals - cashSpent;
-
-                setYesterdayBalance({ account: closingAccount, cash: closingCash });
-            } else {
-                setYesterdayBalance(null);
-            }
-        } catch (error) {
-            console.error("Error fetching yesterday's balance for display:", error);
-            setYesterdayBalance(null);
-        }
-    }
-
-    fetchYesterdayBalance();
-
-  }, [date, user, firestore, currentRecord]); // Re-run if currentRecord changes to reflect updates
-
+  
   const currencyFormatter = new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
@@ -85,6 +49,7 @@ export default function Dashboard() {
   const handleSaveBalances = () => {
     if (!currentRecord) return;
     
+    // Create a new record object with updated opening balances
     const newRecord: DailyRecord = {
       ...currentRecord,
       balances: {
@@ -96,6 +61,7 @@ export default function Dashboard() {
       },
     };
     
+    // The saveRecord function from the context will handle recalculations and saving to localStorage
     saveRecord(newRecord);
     setIsEditingBalances(false);
     toast({
@@ -103,7 +69,7 @@ export default function Dashboard() {
       description: 'Your opening balances have been saved.',
     });
   };
-
+  
   if (recordLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col bg-background">
@@ -125,7 +91,6 @@ export default function Dashboard() {
       </div>
     );
   }
-
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
@@ -182,18 +147,6 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent className="grid gap-6">
-                {yesterdayBalance && !isEditingBalances && (
-                  <div className="rounded-lg border border-dashed border-green-500 bg-green-50/50 p-3 text-sm text-green-800">
-                    <p className="flex items-center font-medium">
-                      <ArrowDown className="mr-2 h-4 w-4" />
-                      Carried over from yesterday:
-                    </p>
-                    <div className="mt-2 flex justify-between">
-                        <span>Account: {currencyFormatter.format(yesterdayBalance.account)}</span>
-                        <span>Cash: {currencyFormatter.format(yesterdayBalance.cash)}</span>
-                    </div>
-                  </div>
-                )}
                 <div className="grid grid-cols-2 gap-4 rounded-lg border p-4">
                   <p className="text-sm font-medium">Opening</p>
                   <p className="text-sm font-medium text-right">Closing</p>

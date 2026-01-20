@@ -12,8 +12,6 @@ import type { DailyRecord } from '@/lib/types';
 import { useDate } from './date-context';
 import { useUser } from '@/firebase/auth/use-user';
 import { format, subDays, parseISO } from 'date-fns';
-import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 // This function is the single source of truth for all calculations.
 const recalculateTotals = (
@@ -63,60 +61,58 @@ interface RecordContextType {
 
 const RecordContext = createContext<RecordContextType | undefined>(undefined);
 
+// A wrapper to safely access localStorage on the client side.
+const getLocalStorage = () => {
+    if (typeof window !== 'undefined') {
+        return window.localStorage;
+    }
+    return null;
+}
+
 export function RecordProvider({ children }: { children: React.ReactNode }) {
   const { user, loading: userLoading } = useUser();
   const { formattedDate } = useDate();
-  const firestore = useFirestore();
+  const [allRecords, setAllRecords] = useState<{ [date: string]: DailyRecord }>({});
+  const [loading, setLoading] = useState(true);
 
-  // Create a memoized reference to the Firestore document.
-  // This ref only changes when the user or date changes.
-  const recordRef = useMemoFirebase(() => {
-    if (!user || !formattedDate) return undefined;
-    return doc(firestore, 'users', user.uid, 'records', formattedDate);
-  }, [user, formattedDate, firestore]);
-
-  // useDoc provides real-time, cached-first data from Firestore.
-  // It handles offline state automatically.
-  const { data: recordData, loading: recordLoading } = useDoc<DailyRecord>(recordRef, { listen: true });
-
-  const isLoading = userLoading || recordLoading;
-
-  // This effect runs ONLY when a new record needs to be created.
+  // Load all user records from localStorage when user changes
   useEffect(() => {
-    // Wait for loading to finish and confirm no record exists.
-    if (isLoading || recordData !== null) {
-      return;
+    if (!user) return;
+    setLoading(true);
+    const storage = getLocalStorage();
+    if (storage) {
+        const storedData = storage.getItem(`financeflow_records_${user.uid}`);
+        if (storedData) {
+            setAllRecords(JSON.parse(storedData));
+        } else {
+            setAllRecords({});
+        }
     }
+    setLoading(false);
+  }, [user]);
 
-    const createNewRecord = async () => {
-      if (!user || !formattedDate || !firestore) return;
+  // Handle creating a new record for the selected date if it doesn't exist
+  useEffect(() => {
+    if (!user || userLoading || loading || !formattedDate) return;
 
+    if (!allRecords[formattedDate]) {
       // Get yesterday's record to calculate opening balance.
       const yesterdayStr = format(subDays(parseISO(formattedDate), 1), 'yyyy-MM-dd');
-      const yesterdayRef = doc(firestore, 'users', user.uid, 'records', yesterdayStr);
+      const yesterdayRecordRaw = allRecords[yesterdayStr];
       
       let openingBalances = { account: 0, cash: 0 };
-      
-      try {
-        const yesterdayDoc = await getDoc(yesterdayRef);
-        if (yesterdayDoc.exists()) {
-          const yesterdayRecordRaw = yesterdayDoc.data() as DailyRecord;
-          // IMPORTANT: Recalculate yesterday's totals to get the correct closing balance.
-          const calculatedYesterday = recalculateTotals(yesterdayRecordRaw);
-          if (calculatedYesterday) {
-            openingBalances = calculatedYesterday.balances.closing;
-          }
-        }
-      } catch (e) {
-          console.error("Error fetching yesterday's record:", e)
-      }
 
+      if (yesterdayRecordRaw) {
+        const calculatedYesterday = recalculateTotals(yesterdayRecordRaw);
+        if (calculatedYesterday) {
+          openingBalances = calculatedYesterday.balances.closing;
+        }
+      }
 
       const newRecord: DailyRecord = {
         date: formattedDate,
         balances: {
           opening: openingBalances,
-          // Closing balances will be calculated by recalculateTotals
           closing: { account: openingBalances.account, cash: openingBalances.cash },
         },
         payments: [],
@@ -124,36 +120,52 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         metadata: { currency: 'INR' },
       };
 
-      // Save the newly created record to Firestore.
-      // The useDoc listener will automatically pick up this change.
-      await setDoc(recordRef, newRecord);
-    };
+      // Use a function for state update to get the latest state
+      setAllRecords(prevRecords => {
+          const updatedRecords = { ...prevRecords, [formattedDate]: newRecord };
+          const storage = getLocalStorage();
+          if (storage && user) {
+              storage.setItem(`financeflow_records_${user.uid}`, JSON.stringify(updatedRecords));
+          }
+          return updatedRecords;
+      });
+    }
+  }, [allRecords, formattedDate, user, userLoading, loading]);
 
-    createNewRecord();
-  }, [isLoading, recordData, user, formattedDate, firestore, recordRef]);
-
-  // The save function that components will use.
   const saveRecord = useCallback(
     (newRecordData: DailyRecord) => {
-      if (!recordRef) return;
-      // Always run recalculate before saving to ensure data integrity.
+      if (!user) return;
+      
       const calculatedRecord = recalculateTotals(newRecordData);
       if (calculatedRecord) {
-        setDoc(recordRef, calculatedRecord, { merge: true });
+        const dateKey = calculatedRecord.date;
+        
+        setAllRecords(prevRecords => {
+            const updatedRecords = { ...prevRecords, [dateKey]: calculatedRecord };
+            const storage = getLocalStorage();
+            if (storage && user) {
+                storage.setItem(`financeflow_records_${user.uid}`, JSON.stringify(updatedRecords));
+            }
+            return updatedRecords;
+        });
       }
     },
-    [recordRef]
+    [user]
   );
+  
+  const currentRecord = useMemo(() => {
+      return recalculateTotals(allRecords[formattedDate] || null);
+  }, [allRecords, formattedDate]);
+  
+  const isLoading = userLoading || loading;
 
-  // The value exposed to the rest of the app.
   const value = useMemo(
     () => ({
-      // Always provide the recalculated record to the UI.
-      record: recalculateTotals(recordData as DailyRecord | null),
+      record: currentRecord,
       loading: isLoading,
       saveRecord,
     }),
-    [recordData, isLoading, saveRecord]
+    [currentRecord, isLoading, saveRecord]
   );
 
   return (
